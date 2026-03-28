@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Instant Cash - Lottery Numbers</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100;200;300;400;500;600;700;800;900&family=Geist+Mono:wght@100;200;300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="lottery-container">
+        <!-- Header -->
+        <header class="lottery-header">
+            <div class="logo-section">
+                <img src="instant-cash-logo.png" alt="Instant Cash" class="logo-image" onerror="this.style.display='none'">
+                <div class="header-animated-text">INSTANT CASH</div>
+            </div>
+
+            <div class="countdown-section">
+                <div class="next-drawing-label">🔥 NEXT DRAWING</div>
+                <div class="countdown-timer">
+                    <div class="time-unit">
+                        <span class="time-value" id="hours">00</span>
+                        <span class="time-label">H</span>
+                    </div>
+                    <div class="time-unit">
+                        <span class="time-value" id="minutes">00</span>
+                        <span class="time-label">M</span>
+                    </div>
+                    <div class="time-unit">
+                        <span class="time-value" id="seconds">00</span>
+                        <span class="time-label">S</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="header-right">
+                <div class="website-animated-text">VISIT-instantcash.bet to watch live result from your phone</div>
+                <div class="current-time" id="currentTime"></div>
+                <div class="dropdown-container">
+                    <button class="menu-button" id="menuButton" aria-label="Open menu">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                        </svg>
+                    </button>
+
+                    <div class="dropdown-content-wide" id="dropdownMenu" style="display: none;">
+                        <div class="all-inputs-container">
+                            <h3 class="dropdown-title">Enter Today's Numbers</h3>
+
+                            <div class="input-group">
+                                <label class="input-label">Select Draw Time</label>
+                                <select id="selectedTime" class="time-select">
+                                    <option value="">Choose a time...</option>
+                                </select>
+                            </div>
+
+                            <div class="input-group">
+                                <label class="input-label">Pick 2 (Two digits)</label>
+                                <input type="text" id="pick2Input" placeholder="e.g., 12" class="draw-input">
+                            </div>
+
+                            <div class="input-group">
+                                <label class="input-label">Pick 3 (Three digits)</label>
+                                <input type="text" id="pick3Input" placeholder="e.g., 123" class="draw-input">
+                            </div>
+
+                            <div class="input-group">
+                                <label class="input-label">Pick 4 (Four digits)</label>
+                                <input type="text" id="pick4Input" placeholder="e.g., 1234" class="draw-input">
+                            </div>
+
+                            <div class="input-group">
+                                <label class="input-label">Pick 5 (Five digits)</label>
+                                <input type="text" id="pick5Input" placeholder="e.g., 12345" class="draw-input">
+                            </div>
+
+                            <div class="dropdown-buttons">
+                                <button id="addNumbersBtn" class="submit-btn">Add to Today's Draws</button>
+                                <button id="yesterdayBtn" class="yesterday-btn">ADD YESTERDAY NUMBERS</button>
+                                <button id="resetBtn" class="reset-btn">Reset All</button>
+                                <button id="cancelBtn" class="cancel-btn">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Numbers Grid -->
+        <main class="numbers-grid" id="numbersGrid">
+            <!-- Number boxes will be dynamically added here -->
+        </main>
+
+        <!-- Empty State -->
+        <div class="empty-state" id="emptyState">
+            <div class="empty-message">
+                <h2>Welcome to Instant Cash</h2>
+                <p>Click the menu button in the top-right corner to start adding your numbers!</p>
+            </div>
+        </div>
+
+        <!-- Yesterday Popup -->
+        <div class="yesterday-overlay" id="yesterdayOverlay" style="display: none;">
+            <div class="yesterday-popup">
+                <div class="yesterday-header">
+                    <h2>Add Yesterday's Numbers</h2>
+                    <p>Enter numbers for yesterday's draws (4:30 PM - 10:00 PM)</p>
+                </div>
+
+                <div class="yesterday-content" id="yesterdayContent">
+                    <!-- Yesterday inputs will be dynamically generated -->
+                </div>
+
+                <div class="yesterday-buttons">
+                    <button id="addYesterdayBtn" class="yesterday-submit-btn">Add Yesterday Numbers</button>
+                    <button id="cancelYesterdayBtn" class="yesterday-cancel-btn">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Reset Confirmation Dialog -->
+        <div class="reset-overlay" id="resetOverlay" style="display: none;">
+            <div class="reset-dialog">
+                <h3>Are you sure you want to reset?</h3>
+                <p>This will remove all number boxes from the page.</p>
+                <div class="reset-buttons">
+                    <button id="confirmResetBtn" class="reset-btn">Yes</button>
+                    <button id="cancelResetBtn" class="cancel-btn">No</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

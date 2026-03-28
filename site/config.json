@@ -1,0 +1,36 @@
+{
+  "page_url": "https://instantcash.bet/",
+  "viewport": {
+    "width": 1366,
+    "height": 768
+  },
+  "settle_ms": 3000,
+  "full_page": true,
+  "debug": false,
+  "roi": {
+    "pick2": [
+      103,
+      338,
+      225,
+      80
+    ],
+    "pick3": [
+      119,
+      419,
+      261,
+      80
+    ],
+    "pick4": [
+      115,
+      491,
+      367,
+      87
+    ],
+    "pick5": [
+      119,
+      578,
+      408,
+      81
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+.git
+.gitignore
+.vscode
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+node_modules
+debug
+pages
+site/debug
+site/page.png
+site/rois_preview.png
+site/rois_existing_preview.png
+site/.env

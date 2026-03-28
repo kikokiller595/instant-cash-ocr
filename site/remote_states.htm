@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>States Controller — Neon</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root{--bg:#07101f;--panel:#0b1730;--line:#15244d;--neon-blue:#00e5ff;--neon-green:#39ff14;--txt:#e7f0ff;--muted:#9ab0d9;--err:#ff5e5e}
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 800px at 15% -10%,#0f1c3d 0%,var(--bg) 60%);color:var(--txt);font:14px/1.45 system-ui,Segoe UI,Arial,sans-serif}
+  header{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .glow{color:var(--neon-blue);text-shadow:0 0 10px rgba(0,229,255,.6)}
+  .pill{padding:4px 10px;border:1px solid var(--line);border-radius:999px;background:#0b1228;color:var(--muted)}
+  .pill.ok{color:var(--neon-green)}
+  .pill.err{color:var(--err)}
+  main{max-width:1150px;margin:18px auto;padding:0 16px;display:grid;gap:16px}
+  .card{background:linear-gradient(180deg,var(--panel),#0a1430);border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:0 0 0 1px rgba(0,229,255,.08),0 20px 50px rgba(0,0,0,.45)}
+  .row{display:grid;gap:12px}
+  .row4{grid-template-columns:repeat(4,minmax(140px,1fr))}
+  label{display:block;margin:4px 0;color:var(--muted);font-weight:600}
+  input,select{width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:#0b1228;color:var(--txt);outline:none}
+  input:focus,select:focus{border-color:var(--neon-blue);box-shadow:0 0 0 3px rgba(0,229,255,.18)}
+  .grid{display:grid;grid-template-columns:340px 1fr 1fr;gap:10px;align-items:center}
+  .grid .state{font-weight:700}
+  .hdr{display:grid;grid-template-columns:340px 1fr 1fr;gap:10px;margin-bottom:6px;color:var(--muted)}
+  .btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+  button{padding:11px 14px;border:0;border-radius:12px;cursor:pointer;font-weight:700;letter-spacing:.2px}
+  .primary{background:linear-gradient(90deg,#00e5ff,#39ff14);color:#00111a;box-shadow:0 0 16px rgba(0,229,255,.5),0 0 24px rgba(57,255,20,.35)}
+  .ghost{background:#0b1228;color:var(--txt);border:1px solid var(--line)}
+  .danger{background:#1f0b0b;color:#ffb3b3;border:1px solid #4d2222}
+  .status{margin-left:auto;font-weight:800}
+  .ok{color:var(--neon-green);text-shadow:0 0 8px rgba(57,255,20,.4)}
+  .err{color:var(--err)}
+  .ring-err{border-color:#b33!important;box-shadow:0 0 0 3px rgba(255,94,94,.25)!important}
+  table{width:100%;border-collapse:collapse}
+  th,td{border-bottom:1px solid var(--line);padding:8px 6px}
+  th{color:var(--muted);font-weight:600}
+  .right{text-align:right}
+  .small{font-size:12px;color:var(--muted)}
+  .apiBox{display:flex;gap:8px;align-items:center}
+  .apiBox input{width:340px}
+</style>
+</head>
+<body>
+<header>
+  <h2 class="glow">States Controller</h2>
+  <div class="apiBox">
+    <span class="pill">Writes: site/states.json</span>
+    <span id="apiPill" class="pill">API: checking…</span>
+    <input id="apiInput" placeholder="http://127.0.0.1:5100">
+    <button class="ghost" id="apiSave">Use API</button>
+  </div>
+</header>
+
+<main>
+  <!-- Compose -->
+  <section class="card">
+    <div class="row row4">
+      <div>
+        <label>Day</label>
+        <div>
+          <label><input type="radio" name="day" value="today" checked> Today</label>
+          <label style="margin-left:12px;"><input type="radio" name="day" value="yesterday"> Yesterday</label>
+        </div>
+      </div>
+      <div>
+        <label>Time (ET, applies to all)</label>
+        <input id="time" type="time" step="60" value="10:00">
+      </div>
+      <div>
+        <label>Quick fill (optional)</label>
+        <input id="quickP3" placeholder="P3 123 → fills empty P3">
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <input id="quickP4" placeholder="P4 1234 → fills empty P4">
+      </div>
+    </div>
+
+    <div class="hdr"><div>State / Segment</div><div>Pick 3</div><div>Pick 4</div></div>
+    <div id="rows"></div>
+
+    <div class="btns">
+      <button class="ghost" id="fillAll">Apply quick fills</button>
+      <button class="danger" id="clearAll">Clear all (2 clicks)</button>
+      <button class="primary" id="saveSend">Save to API + Broadcast</button>
+      <span id="status" class="status"></span>
+    </div>
+    <div class="small">Broadcast channel: <b>instantcash-remote</b> • type: <b>REMOTE_STATE_ENTRY</b></div>
+  </section>
+
+  <!-- Sent entries -->
+  <section class="card">
+    <div class="btns">
+      <strong>Sent entries</strong>
+      <button class="ghost" id="refreshList">Refresh</button>
+      <span id="listStatus" class="status"></span>
+    </div>
+    <table id="sentTbl">
+      <thead>
+        <tr>
+          <th>State</th><th>Segment</th><th>Draw time (ET)</th>
+          <th>Pick3</th><th>Pick4</th><th class="right">Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+</main>
+
+<script>
+/* ---------- API base with live status + override ---------- */
+const DEFAULT_API = "http://127.0.0.1:5100";
+let API = (new URLSearchParams(location.search).get("api")) || localStorage.getItem("states_api") || DEFAULT_API;
+localStorage.setItem("states_api", API);
+
+const apiPill  = document.getElementById("apiPill");
+const apiInput = document.getElementById("apiInput");
+apiInput.value = API;
+document.getElementById("apiSave").onclick = () => {
+  const v = (apiInput.value || "").trim();
+  if (!/^https?:\/\//i.test(v)) { setListMsg("Bad API URL", false); return; }
+  API = v.replace(/\/+$/,"");
+  localStorage.setItem("states_api", API);
+  setListMsg("API set", true);
+  pingApi(); loadList();
+};
+
+async function pingApi(){
+  try{
+    const r = await fetch(API + "/api/states/health", { cache:"no-store", mode:"cors" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const j = await r.json();
+    apiPill.textContent = `API OK @ ${API}`;
+    apiPill.className = "pill ok";
+  }catch(e){
+    apiPill.textContent = `API DOWN @ ${API}`;
+    apiPill.className = "pill err";
+  }
+}
+setInterval(pingApi, 5000);
+pingApi();
+
+/* ---------- UI data + helpers ---------- */
+const ch = new BroadcastChannel('instantcash-remote');
+
+const STATE_NAMES = [
+  "Georgia Morning","Georgia Evening","Georgia Night",
+  "New Jersey Day","New Jersey Night",
+  "Connecticut Day","Connecticut Night",
+  "Florida Day","Florida Night",
+  "Pennsylvania Day","Pennsylvania Night",
+  "New York Day","New York Night",
+];
+
+const byId = id => document.getElementById(id);
+const onlyDigits = (v,len) => String(v||"").replace(/\D+/g,"").slice(0,len);
+const selectedDay = () => [...document.querySelectorAll('input[name="day"]')].find(r=>r.checked).value;
+
+function row(state){
+  const wrap = document.createElement('div');
+  wrap.className = 'grid';
+  wrap.innerHTML = `
+    <div class="state">${state}</div>
+    <div><input class="p3" data-state="${state}" placeholder="123" maxlength="3" inputmode="numeric" autocomplete="off"></div>
+    <div><input class="p4" data-state="${state}" placeholder="1234" maxlength="4" inputmode="numeric" autocomplete="off"></div>
+  `;
+  return wrap;
+}
+
+(function initCompose(){
+  const rows = byId('rows');
+  STATE_NAMES.forEach(s => rows.appendChild(row(s)));
+  byId('fillAll').onclick = () => { applyQuickFills(); setMsg('Quick fills applied', true); };
+  byId('clearAll').onclick = onClearAll;
+  byId('saveSend').onclick = saveSend;
+  byId('refreshList').onclick = loadList;
+  loadList(); setInterval(loadList, 15000);
+})();
+
+function applyQuickFills(){
+  const qp3 = onlyDigits(byId('quickP3').value,3);
+  const qp4 = onlyDigits(byId('quickP4').value,4);
+  document.querySelectorAll('input.p3').forEach(i => { if(!i.value && qp3) i.value = qp3; });
+  document.querySelectorAll('input.p4').forEach(i => { if(!i.value && qp4) i.value = qp4; });
+}
+
+let clearArmed = false;
+function onClearAll(){
+  if (!clearArmed){
+    clearArmed = true;
+    setMsg('Click again to CLEAR ALL states.json', false);
+    setTimeout(()=>{ clearArmed=false; }, 5000);
+    return;
+  }
+  clearArmed = false;
+  fetch(API + "/api/states/clear_all", {
+    method:"POST", headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify({ confirm: "YES" })
+  }).then(r=>r.json()).then(j=>{
+    if (j.ok){ setMsg('All cleared', true); loadList(); }
+    else setMsg('Clear failed', false);
+  }).catch((e)=> { console.error(e); setMsg('Clear failed: ' + e.message, false); });
+}
+
+function setMsg(msg, ok=true){
+  const el = byId('status');
+  el.textContent = msg;
+  el.className = 'status ' + (ok ? 'ok' : 'err');
+  if(msg) setTimeout(()=>{ el.textContent=''; }, 5000);
+}
+function setListMsg(msg, ok=true){
+  const el = byId('listStatus');
+  el.textContent = msg;
+  el.className = 'status ' + (ok ? 'ok' : 'err');
+  if(msg) setTimeout(()=>{ el.textContent=''; }, 4000);
+}
+
+/* ---------- Save/Send ---------- */
+function gatherItems(){
+  const items = [];
+  const day = selectedDay();
+  const time = byId('time').value || '10:00';
+  let bad = 0;
+
+  document.querySelectorAll('#rows .grid').forEach(row => {
+    const state = row.querySelector('.state').textContent.trim();
+    const p3i = row.querySelector('.p3'); const p4i = row.querySelector('.p4');
+    const p3 = onlyDigits(p3i.value,3), p4 = onlyDigits(p4i.value,4);
+    p3i.classList.remove('ring-err'); p4i.classList.remove('ring-err');
+
+    if (p3i.value && p3.length !== 3){ p3i.classList.add('ring-err'); bad++; }
+    if (p4i.value && p4.length !== 4){ p4i.classList.add('ring-err'); bad++; }
+    if (p3 || p4){ items.push({ state, segment: state, day, time, pick3: p3, pick4: p4 }); }
+  });
+
+  return { items, bad };
+}
+
+async function saveToApi(items){
+  const r = await fetch(API + "/api/states/batch", {
+    method:"POST",
+    mode:"cors",
+    headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify({ items })
+  });
+  if(!r.ok){
+    const txt = await r.text().catch(()=> "");
+    throw new Error(`HTTP ${r.status} ${r.statusText} ${txt}`.trim());
+  }
+  return r.json();
+}
+
+function broadcast(items){
+  const day = selectedDay();
+  for (const it of items){
+    ch.postMessage({
+      type: "REMOTE_STATE_ENTRY",
+      payload: { day, segment: it.state, picks: { pick3: it.pick3 || null, pick4: it.pick4 || null } }
+    });
+  }
+}
+
+async function saveSend(){
+  const { items, bad } = gatherItems();
+  if (bad){ setMsg('Fix red fields', false); return; }
+  if (items.length === 0){ setMsg('Nothing to send', false); return; }
+  try{
+    const res = await saveToApi(items);
+    broadcast(items);
+    setMsg(`Saved ${res.count||items.length} • broadcast sent`, true);
+    loadList();
+  }catch(e){
+    console.error(e);
+    setMsg('API error: ' + e.message, false);
+  }
+}
+
+/* ---------- Sent entries list ---------- */
+async function loadList(){
+  try{
+    const r = await fetch(API + "/api/states/list", {cache:"no-store", mode:"cors"});
+    if(!r.ok){
+      const txt = await r.text().catch(()=> "");
+      throw new Error(`HTTP ${r.status} ${r.statusText} ${txt}`.trim());
+    }
+    const j = await r.json();
+    renderList(Array.isArray(j.items) ? j.items : []);
+    setListMsg(`Loaded ${j.items?.length||0}`, true);
+  }catch(e){
+    console.error("loadList failed:", e);
+    renderList([]);
+    setListMsg('Load failed: ' + e.message, false);
+  }
+}
+
+function renderList(items){
+  const tb = byId('sentTbl').querySelector('tbody');
+  tb.innerHTML = "";
+  const arr = items.slice().reverse();
+  for (const e of arr){
+    const tr = document.createElement('tr');
+    const p3 = e.pick3 || ""; const p4 = e.pick4 || "";
+    tr.innerHTML = `
+      <td>${e.state||""}</td>
+      <td>${e.segment||""}</td>
+      <td>${fmtET(e.draw_time_et)} <span class="small">(${e.type||inferDay(e.draw_time_et)})</span></td>
+      <td><input value="${p3}" maxlength="3" class="listp3" style="width:70px"></td>
+      <td><input value="${p4}" maxlength="4" class="listp4" style="width:80px"></td>
+      <td class="right">
+        <button class="ghost" data-act="save">Save</button>
+        <button class="danger" data-act="del">Delete</button>
+        <span class="small" style="margin-left:8px">${e.id||""}</span>
+      </td>
+    `;
+    tr.querySelector('[data-act="save"]').onclick = () => saveRow(e, tr);
+    tr.querySelector('[data-act="del"]').onclick  = () => delRow(e, tr);
+    tb.appendChild(tr);
+  }
+}
+
+function fmtET(iso){
+  try{
+    const d = new Date(iso);
+    return d.toLocaleString("en-US", { timeZone:"America/New_York", hour:"numeric", minute:"2-digit", hour12:true, year:"numeric", month:"short", day:"numeric" });
+  }catch{ return iso||""; }
+}
+
+function inferDay(iso){
+  try{
+    const now = new Date(new Date().toLocaleString("en-US",{timeZone:"America/New_York"}));
+    const d   = new Date(new Date(iso).toLocaleString("en-US",{timeZone:"America/New_York"}));
+    const same = d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth() && d.getDate()===now.getDate();
+    return same ? "today" : "yesterday";
+  }catch{ return "today"; }
+}
+
+async function saveRow(e, tr){
+  const p3i = tr.querySelector('.listp3');
+  const p4i = tr.querySelector('.listp4');
+  const p3 = onlyDigits(p3i.value,3);
+  const p4 = onlyDigits(p4i.value,4);
+  p3i.classList.toggle('ring-err', p3i.value && p3.length!==3);
+  p4i.classList.toggle('ring-err', p4i.value && p4.length!==4);
+  if ((p3i.value && p3.length!==3) || (p4i.value && p4.length!==4)) return;
+
+  try{
+    const r = await fetch(API + "/api/states/update", {
+      method:"POST", mode:"cors", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ id: e.id, pick3: p3, pick4: p4 })
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error||"update failed");
+    ch.postMessage({ type:"REMOTE_STATE_ENTRY", payload:{ day: inferDay(j.entry.draw_time_et), segment: j.entry.segment, picks:{ pick3:j.entry.pick3, pick4:j.entry.pick4 } }});
+    setListMsg("Saved", true);
+  }catch(err){ console.error(err); setListMsg("Save failed: " + err.message, false); }
+}
+
+async function delRow(e, tr){
+  if (!confirm("Delete this entry?")) return;
+  try{
+    const r = await fetch(API + "/api/states/delete", {
+      method:"POST", mode:"cors", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ id: e.id })
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error||"delete failed");
+    tr.remove();
+    setListMsg("Deleted", true);
+  }catch(err){ console.error(err); setListMsg("Delete failed: " + err.message, false); }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Instant Cash • Admin</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root{
+    --bg:#0a0f1e;
+    --panel:#0f1630;
+    --muted:#7b86a3;
+    --ok:#19ff90;
+    --warn:#ffd319;
+    --bad:#ff3864;
+    --neon:#4d7bff;
+  }
+
+  *{box-sizing:border-box}
+  html,body{height:100%}
+
+  body{
+    margin:0;
+    background:radial-gradient(1200px 800px at 20% -10%, #10204f 0%, #0a0f1e 40%, #070b16 100%);
+    color:#eaf0ff;
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Geist",sans-serif;
+    font-variant-numeric:tabular-nums;
+  }
+
+  .app{
+    max-width:1200px;
+    margin:24px auto;
+    padding:0 16px;
+  }
+
+  .hdr{
+    display:flex;
+    gap:16px;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:16px;
+  }
+
+  .title{
+    font-weight:800;
+    font-size:24px;
+    letter-spacing:.5px;
+    text-shadow:0 0 10px rgba(77,123,255,.6), 0 0 20px rgba(77,123,255,.35);
+  }
+
+  .controls{
+    display:flex;
+    gap:10px;
+    align-items:center;
+    color:var(--muted);
+    flex-wrap:wrap;
+  }
+
+  .btn{
+    background:linear-gradient(180deg,#1b2552,#121b3a);
+    border:1px solid #32407b;
+    color:#eaf0ff;
+    padding:8px 12px;
+    border-radius:10px;
+    cursor:pointer;
+    font-weight:600;
+    box-shadow:0 0 0 0 rgba(77,123,255,.0), inset 0 0 12px rgba(77,123,255,.12);
+    transition:transform .12s ease, box-shadow .2s ease, border-color .2s ease, background .2s ease;
+  }
+
+  .btn:hover{
+    transform:translateY(-1px);
+    box-shadow:0 0 16px rgba(77,123,255,.35), inset 0 0 18px rgba(77,123,255,.18);
+  }
+
+  .btn.alt{
+    border-color:#2d6a50;
+    background:linear-gradient(180deg,#1a4033,#122b24);
+  }
+
+  .toggle{
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+
+  .toggle input{
+    accent-color:#4d7bff;
+    width:18px;
+    height:18px;
+  }
+
+  .grid{
+    display:grid;
+    grid-template-columns: 1.1fr .9fr;
+    gap:16px;
+  }
+
+  .card{
+    background:linear-gradient(180deg, rgba(19,27,55,.95), rgba(12,18,38,.95));
+    border:1px solid rgba(90,110,180,.35);
+    border-radius:14px;
+    padding:16px;
+    box-shadow:0 0 24px rgba(77,123,255,.12), inset 0 0 20px rgba(77,123,255,.06);
+  }
+
+  .card h3{
+    margin:0 0 12px 0;
+    font-size:15px;
+    color:#baceff;
+    letter-spacing:.3px;
+  }
+
+  .table{
+    width:100%;
+    border-collapse:separate;
+    border-spacing:0 8px;
+  }
+
+  .table th,
+  .table td{
+    padding:10px 12px;
+    text-align:left;
+  }
+
+  .table th{
+    font-size:12px;
+    color:#aab7e8;
+    font-weight:700;
+  }
+
+  .tr{
+    background:linear-gradient(180deg, rgba(16,23,48,.85), rgba(12,18,38,.85));
+    border:1px solid rgba(90,110,180,.35);
+    border-radius:10px;
+  }
+
+  .tr td:first-child{
+    border-top-left-radius:10px;
+    border-bottom-left-radius:10px;
+  }
+
+  .tr td:last-child{
+    border-top-right-radius:10px;
+    border-bottom-right-radius:10px;
+  }
+
+  .chip{
+    padding:2px 8px;
+    border-radius:999px;
+    font-weight:700;
+    font-size:12px;
+  }
+
+  .chip.final{
+    background:linear-gradient(180deg,#1bffc6,#11d49c);
+    color:#052;
+  }
+
+  .chip.pending{
+    background:linear-gradient(180deg,#ffe07a,#ffc14d);
+    color:#532;
+  }
+
+  .chip.err{
+    background:linear-gradient(180deg,#ff7a9b,#ff4d73);
+    color:#311;
+  }
+
+  .muted{color:var(--muted)}
+  .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Geist Mono", monospace}
+
+  .logwrap{
+    height:360px;
+    overflow:auto;
+    background:rgba(10,14,28,.6);
+    border:1px solid rgba(90,110,180,.35);
+    border-radius:10px;
+    padding:10px;
+  }
+
+  .logline{
+    font-size:12px;
+    color:#cdd8ff;
+    white-space:pre-wrap;
+    line-height:1.35;
+  }
+
+  .logline .ts{color:#8aa0ff}
+  .logline .ok{color:#19ff90}
+  .logline .warn{color:#ffd319}
+  .logline .err{color:#ff3864}
+
+  .sep{
+    height:1px;
+    background:linear-gradient(90deg, rgba(77,123,255,.0), rgba(77,123,255,.35), rgba(77,123,255,.0));
+    margin:12px 0;
+  }
+
+  @media (max-width: 980px){
+    .grid{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="hdr">
+    <div class="title">ADMIN • Instant Cash</div>
+    <div class="controls">
+      <label class="toggle"><input type="checkbox" id="autoref" checked> Auto-refresh</label>
+      <select id="range" class="btn">
+        <option value="today">Hoy</option>
+        <option value="all">Todo (archivo completo)</option>
+      </select>
+      <button class="btn" id="reloadBtn">Reload</button>
+      <button class="btn alt" id="scrollEndBtn">Scroll log al final</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h3>Historial del día</h3>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Hora</th>
+            <th>Pick 2</th>
+            <th>Pick 3</th>
+            <th>Pick 4</th>
+            <th>Pick 5</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Logs (scheduler + OCR)</h3>
+      <div class="logwrap" id="logwrap"></div>
+      <div class="sep"></div>
+      <div class="muted" style="font-size:12px">
+        Origen: <span class="mono">/schedule.log</span> • JSON: <span class="mono">/latest.json</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const JSON_URL = './latest.json';
+const LOG_URL  = './schedule.log';
+
+const tbody = document.getElementById('tbody');
+const logwrap = document.getElementById('logwrap');
+const autoref = document.getElementById('autoref');
+const rangeSel = document.getElementById('range');
+
+function asLocalTime(s){
+  if(!s) return '—';
+  const dt = new Date(s);
+  if (isNaN(dt)) return s;
+  return dt.toLocaleString();
+}
+
+function isTodayISO(iso){
+  try{
+    const d = new Date(iso);
+    const now = new Date();
+    return d.getFullYear()===now.getFullYear() &&
+           d.getMonth()===now.getMonth() &&
+           d.getDate()===now.getDate();
+  }catch(e){
+    return false;
+  }
+}
+
+async function fetchJSON(){
+  const res = await fetch(JSON_URL + '?nocache=' + Date.now(), {cache:'no-store'});
+  const raw = await res.json();
+  return Array.isArray(raw) ? raw : raw && typeof raw === 'object' ? [raw] : [];
+}
+
+async function fetchLog(){
+  try{
+    const res = await fetch(LOG_URL + '?nocache=' + Date.now(), {cache:'no-store'});
+    if(!res.ok) return '';
+    return await res.text();
+  }catch(e){
+    return '';
+  }
+}
+
+function renderHistory(arr){
+  tbody.innerHTML = '';
+
+  const rows = [];
+  for (const e of arr) {
+    if (rangeSel.value === 'today' && !isTodayISO(e.capture_at || e.captured_at || e.draw_id)) continue;
+
+    const p2 = e.pick2 || '--';
+    const p3 = e.pick3 || '--';
+    const p4 = e.pick4 || '--';
+    const p5 = e.pick5 || '--';
+    const st = e.status || 'pending';
+
+    const tr = document.createElement('tr');
+    tr.className = 'tr';
+
+    const td0 = document.createElement('td');
+    td0.textContent = asLocalTime(e.captured_at || '');
+    td0.className = 'mono muted';
+
+    const td1 = document.createElement('td');
+    td1.textContent = p2;
+    td1.className = 'mono';
+
+    const td2 = document.createElement('td');
+    td2.textContent = p3;
+    td2.className = 'mono';
+
+    const td3 = document.createElement('td');
+    td3.textContent = p4;
+    td3.className = 'mono';
+
+    const td4 = document.createElement('td');
+    td4.textContent = p5;
+    td4.className = 'mono';
+
+    const td5 = document.createElement('td');
+    const chipClass = st === 'final' ? 'final' : st === 'pending' ? 'pending' : 'err';
+    td5.innerHTML = `<span class="chip ${chipClass}">${st}</span>`;
+
+    for (const td of [td0, td1, td2, td3, td4, td5]) {
+      tr.appendChild(td);
+    }
+
+    tbody.appendChild(tr);
+    rows.push(tr);
+  }
+
+  if (!rows.length){
+    const tr = document.createElement('tr');
+    tr.className = 'tr';
+
+    const td = document.createElement('td');
+    td.colSpan = 6;
+    td.textContent = 'Sin datos para el rango seleccionado.';
+    td.className = 'muted';
+
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+  }
+}
+
+function sanitizeArray(arr){
+  try{
+    if (!Array.isArray(arr)) return [];
+    return arr.filter(x => x && typeof x === 'object');
+  }catch(e){
+    return [];
+  }
+}
+
+function renderLog(text){
+  if(!text){
+    logwrap.innerHTML = '<div class="logline muted">Sin log disponible.</div>';
+    return;
+  }
+
+  const lines = text.split(/\r?\n/).filter(Boolean).slice(-800);
+  const frag = document.createDocumentFragment();
+
+  for (const ln of lines){
+    const div = document.createElement('div');
+    div.className = 'logline';
+
+    const cls = /ERROR|exit=1|WATCHDOG|PermissionError/.test(ln)
+      ? 'err'
+      : /WARNING|pending/.test(ln)
+      ? 'warn'
+      : 'ok';
+
+    const m = ln.match(/^\[(.*?)\]\s*(.*)$/);
+
+    if (m){
+      div.innerHTML = `<span class="ts">[${m[1]}]</span> <span class="${cls}">${m[2]}</span>`;
+    } else {
+      div.textContent = ln;
+    }
+
+    frag.appendChild(div);
+  }
+
+  logwrap.innerHTML = '';
+  logwrap.appendChild(frag);
+}
+
+async function refresh(){
+  try{
+    const arr = sanitizeArray(await fetchJSON());
+    const dataset = rangeSel.value === 'today'
+      ? arr.filter(e => isTodayISO(e.captured_at || e.draw_id || ''))
+      : arr;
+
+    renderHistory(dataset);
+  }catch(e){
+    console.error('JSON refresh error:', e);
+  }
+
+  const log = await fetchLog();
+  renderLog(log);
+}
+
+let timer = null;
+
+function startAuto(){
+  if (timer) clearInterval(timer);
+  timer = setInterval(() => {
+    if (autoref.checked) refresh();
+  }, 2000);
+}
+
+document.getElementById('reloadBtn').addEventListener('click', refresh);
+
+document.getElementById('scrollEndBtn').addEventListener('click', () => {
+  logwrap.scrollTop = logwrap.scrollHeight;
+});
+
+rangeSel.addEventListener('change', refresh);
+
+autoref.addEventListener('change', () => {
+  if (autoref.checked) refresh();
+});
+
+refresh();
+startAuto();
+</script>
+</body>
+</html>
