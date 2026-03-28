@@ -6,6 +6,8 @@ import os
 import re
 import subprocess
 import sys
+import threading
+import time
 from datetime import datetime, timedelta, time as d_time
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -40,6 +42,9 @@ SCHEDULE_LOG = (DATA_DIR / "schedule.log").resolve()
 SCHEDULER_PY = (SITE / "scheduler.py").resolve()
 
 _SCHEDULER_PROC = None
+_SCHEDULER_LOG_HANDLE = None
+_SCHEDULER_MONITOR = None
+_SCHEDULER_STOP = threading.Event()
 
 ALLOWED_STATES = [
     "Georgia Morning","Georgia Evening","Georgia Night",
@@ -93,6 +98,27 @@ def read_text_file(path: Path) -> str:
         return path.read_text(encoding="utf-8")
     except Exception:
         return ""
+
+def append_scheduler_log(message: str):
+    ts = now_et().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{ts}] supervisor: {message}\n"
+    try:
+        SCHEDULE_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with SCHEDULE_LOG.open("a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception:
+        pass
+
+def close_scheduler_log_handle():
+    global _SCHEDULER_LOG_HANDLE
+    if _SCHEDULER_LOG_HANDLE is None:
+        return
+    try:
+        _SCHEDULER_LOG_HANDLE.close()
+    except Exception:
+        pass
+    finally:
+        _SCHEDULER_LOG_HANDLE = None
 
 def only_digits(s: str, n: int) -> str:
     if not s: return ""
@@ -214,31 +240,81 @@ def delete_one(rec_id: str) -> bool:
     atomic_write(STATES_JSON, new_data)
     return True
 
-def start_scheduler_if_enabled():
+def launch_scheduler_process():
+    global _SCHEDULER_LOG_HANDLE, _SCHEDULER_PROC
+
+    env = os.environ.copy()
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    SCHEDULE_LOG.parent.mkdir(parents=True, exist_ok=True)
+    close_scheduler_log_handle()
+    _SCHEDULER_LOG_HANDLE = SCHEDULE_LOG.open("a", encoding="utf-8", buffering=1)
+    append_scheduler_log(f"launching scheduler -> {SCHEDULER_PY}")
+    _SCHEDULER_PROC = subprocess.Popen(
+        [sys.executable, str(SCHEDULER_PY)],
+        cwd=str(SITE),
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=_SCHEDULER_LOG_HANDLE,
+        stderr=subprocess.STDOUT,
+    )
+    return _SCHEDULER_PROC
+
+def scheduler_supervisor_loop():
     global _SCHEDULER_PROC
+    last_exit = None
+
+    while not _SCHEDULER_STOP.is_set():
+        proc = _SCHEDULER_PROC
+        if proc is None:
+            try:
+                launch_scheduler_process()
+            except Exception as exc:
+                append_scheduler_log(f"failed to launch scheduler: {exc}")
+                _SCHEDULER_STOP.wait(10)
+                continue
+            _SCHEDULER_STOP.wait(2)
+            continue
+
+        exit_code = proc.poll()
+        if exit_code is None:
+            _SCHEDULER_STOP.wait(5)
+            continue
+
+        if exit_code != last_exit:
+            append_scheduler_log(f"scheduler exited with code {exit_code}; restarting in 5s")
+            last_exit = exit_code
+        close_scheduler_log_handle()
+        _SCHEDULER_PROC = None
+        _SCHEDULER_STOP.wait(5)
+
+def start_scheduler_if_enabled():
+    global _SCHEDULER_MONITOR
 
     if not env_flag("RUN_OCR_SCHEDULER", default=False):
         return None
     if not SCHEDULER_PY.exists():
         return None
-    if _SCHEDULER_PROC is not None and _SCHEDULER_PROC.poll() is None:
+    if _SCHEDULER_MONITOR is not None and _SCHEDULER_MONITOR.is_alive():
         return _SCHEDULER_PROC
 
-    env = os.environ.copy()
-    env.setdefault("PYTHONUNBUFFERED", "1")
-    _SCHEDULER_PROC = subprocess.Popen(
-        [sys.executable, str(SCHEDULER_PY)],
-        cwd=str(SITE),
-        env=env,
+    _SCHEDULER_STOP.clear()
+    _SCHEDULER_MONITOR = threading.Thread(
+        target=scheduler_supervisor_loop,
+        name="scheduler-supervisor",
+        daemon=True,
     )
+    _SCHEDULER_MONITOR.start()
     return _SCHEDULER_PROC
 
 def stop_scheduler():
     global _SCHEDULER_PROC
+    _SCHEDULER_STOP.set()
     if _SCHEDULER_PROC is None:
+        close_scheduler_log_handle()
         return
     if _SCHEDULER_PROC.poll() is not None:
         _SCHEDULER_PROC = None
+        close_scheduler_log_handle()
         return
     try:
         _SCHEDULER_PROC.terminate()
@@ -250,6 +326,7 @@ def stop_scheduler():
             pass
     finally:
         _SCHEDULER_PROC = None
+        close_scheduler_log_handle()
 
 def send_site_file(filename: str):
     if filename.startswith("."):
@@ -307,6 +384,7 @@ def serve_states_json():
 def health():
     items = load_states()
     scheduler_running = _SCHEDULER_PROC is not None and _SCHEDULER_PROC.poll() is None
+    scheduler_exit_code = None if _SCHEDULER_PROC is None else _SCHEDULER_PROC.poll()
     return jsonify({
         "ok": True,
         "now_et": now_et().isoformat(timespec="seconds"),
@@ -316,6 +394,7 @@ def health():
         "data_dir": str(DATA_DIR),
         "scheduler_enabled": env_flag("RUN_OCR_SCHEDULER", default=False),
         "scheduler_running": scheduler_running,
+        "scheduler_exit_code": scheduler_exit_code,
     })
 
 @app.post("/api/states/batch")
