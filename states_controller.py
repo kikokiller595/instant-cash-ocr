@@ -294,10 +294,17 @@ def start_scheduler_if_enabled():
         return None
     if not SCHEDULER_PY.exists():
         return None
+    if _SCHEDULER_PROC is not None and _SCHEDULER_PROC.poll() is None:
+        return _SCHEDULER_PROC
     if _SCHEDULER_MONITOR is not None and _SCHEDULER_MONITOR.is_alive():
         return _SCHEDULER_PROC
 
     _SCHEDULER_STOP.clear()
+    try:
+        launch_scheduler_process()
+    except Exception as exc:
+        append_scheduler_log(f"initial scheduler launch failed: {exc}")
+
     _SCHEDULER_MONITOR = threading.Thread(
         target=scheduler_supervisor_loop,
         name="scheduler-supervisor",
@@ -382,6 +389,11 @@ def serve_states_json():
 
 @app.get("/api/states/health")
 def health():
+    if env_flag("RUN_OCR_SCHEDULER", default=False):
+        monitor_alive = _SCHEDULER_MONITOR is not None and _SCHEDULER_MONITOR.is_alive()
+        proc_running = _SCHEDULER_PROC is not None and _SCHEDULER_PROC.poll() is None
+        if not monitor_alive or not proc_running:
+            start_scheduler_if_enabled()
     items = load_states()
     scheduler_running = _SCHEDULER_PROC is not None and _SCHEDULER_PROC.poll() is None
     scheduler_exit_code = None if _SCHEDULER_PROC is None else _SCHEDULER_PROC.poll()
@@ -395,6 +407,7 @@ def health():
         "scheduler_enabled": env_flag("RUN_OCR_SCHEDULER", default=False),
         "scheduler_running": scheduler_running,
         "scheduler_exit_code": scheduler_exit_code,
+        "scheduler_monitor_alive": _SCHEDULER_MONITOR is not None and _SCHEDULER_MONITOR.is_alive(),
     })
 
 @app.post("/api/states/batch")
