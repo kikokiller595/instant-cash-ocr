@@ -19,6 +19,8 @@ RUN apt-get update \
 
 COPY . /app
 
+RUN chmod +x /app/start.sh
+
 EXPOSE 8080
 
-CMD ["python", "states_controller.py"]
+CMD ["/app/start.sh"]

@@ -39,6 +39,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 STATES_JSON = (DATA_DIR / "states.json").resolve()
 LATEST_JSON = (DATA_DIR / "latest.json").resolve()
 SCHEDULE_LOG = (DATA_DIR / "schedule.log").resolve()
+SCHEDULER_PID_FILE = (DATA_DIR / "scheduler.pid").resolve()
 SCHEDULER_PY = (SITE / "scheduler.py").resolve()
 
 _SCHEDULER_PROC = None
@@ -108,6 +109,24 @@ def append_scheduler_log(message: str):
             f.write(line)
     except Exception:
         pass
+
+def process_is_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+def pid_file_running() -> bool:
+    try:
+        raw = SCHEDULER_PID_FILE.read_text(encoding="utf-8").strip()
+        if not raw:
+            return False
+        return process_is_alive(int(raw))
+    except Exception:
+        return False
 
 def close_scheduler_log_handle():
     global _SCHEDULER_LOG_HANDLE
@@ -294,6 +313,8 @@ def start_scheduler_if_enabled():
         return None
     if not SCHEDULER_PY.exists():
         return None
+    if pid_file_running():
+        return None
     if _SCHEDULER_PROC is not None and _SCHEDULER_PROC.poll() is None:
         return _SCHEDULER_PROC
     if _SCHEDULER_MONITOR is not None and _SCHEDULER_MONITOR.is_alive():
@@ -391,11 +412,11 @@ def serve_states_json():
 def health():
     if env_flag("RUN_OCR_SCHEDULER", default=False):
         monitor_alive = _SCHEDULER_MONITOR is not None and _SCHEDULER_MONITOR.is_alive()
-        proc_running = _SCHEDULER_PROC is not None and _SCHEDULER_PROC.poll() is None
+        proc_running = (_SCHEDULER_PROC is not None and _SCHEDULER_PROC.poll() is None) or pid_file_running()
         if not monitor_alive or not proc_running:
             start_scheduler_if_enabled()
     items = load_states()
-    scheduler_running = _SCHEDULER_PROC is not None and _SCHEDULER_PROC.poll() is None
+    scheduler_running = (_SCHEDULER_PROC is not None and _SCHEDULER_PROC.poll() is None) or pid_file_running()
     scheduler_exit_code = None if _SCHEDULER_PROC is None else _SCHEDULER_PROC.poll()
     return jsonify({
         "ok": True,
