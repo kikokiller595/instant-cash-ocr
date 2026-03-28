@@ -1,18 +1,21 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
 <head>
 <meta charset="utf-8">
-<title>Instant Cash • Admin</title>
+<title>Instant Cash Admin</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
   :root{
-    --bg:#0a0f1e;
+    --bg:#09101f;
     --panel:#0f1630;
-    --muted:#7b86a3;
-    --ok:#19ff90;
+    --panel-2:#0c1429;
+    --line:rgba(104,128,214,.28);
+    --text:#edf2ff;
+    --muted:#8f9cbd;
+    --accent:#5d88ff;
+    --accent-2:#19ff90;
     --warn:#ffd319;
-    --bad:#ff3864;
-    --neon:#4d7bff;
+    --bad:#ff5a7a;
   }
 
   *{box-sizing:border-box}
@@ -20,394 +23,760 @@
 
   body{
     margin:0;
-    background:radial-gradient(1200px 800px at 20% -10%, #10204f 0%, #0a0f1e 40%, #070b16 100%);
-    color:#eaf0ff;
-    font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Geist",sans-serif;
+    color:var(--text);
+    background:
+      radial-gradient(900px 500px at 10% -10%, rgba(80,122,255,.25), transparent 60%),
+      radial-gradient(1100px 700px at 100% 0%, rgba(28,255,174,.08), transparent 55%),
+      linear-gradient(180deg, #09101f 0%, #050913 100%);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,sans-serif;
     font-variant-numeric:tabular-nums;
   }
 
   .app{
-    max-width:1200px;
-    margin:24px auto;
-    padding:0 16px;
+    max-width:1320px;
+    margin:0 auto;
+    padding:22px 16px 28px;
   }
 
   .hdr{
     display:flex;
-    gap:16px;
-    align-items:center;
+    align-items:flex-start;
     justify-content:space-between;
+    gap:16px;
     margin-bottom:16px;
   }
 
   .title{
+    font-size:28px;
     font-weight:800;
-    font-size:24px;
-    letter-spacing:.5px;
-    text-shadow:0 0 10px rgba(77,123,255,.6), 0 0 20px rgba(77,123,255,.35);
+    letter-spacing:.4px;
+    text-shadow:0 0 18px rgba(93,136,255,.3);
+  }
+
+  .subtitle{
+    margin-top:4px;
+    color:var(--muted);
+    font-size:14px;
   }
 
   .controls{
     display:flex;
     gap:10px;
     align-items:center;
-    color:var(--muted);
     flex-wrap:wrap;
   }
 
+  .btn,
+  .input,
+  .select{
+    border-radius:12px;
+    border:1px solid var(--line);
+    background:linear-gradient(180deg, rgba(22,32,66,.96), rgba(13,20,40,.96));
+    color:var(--text);
+    padding:10px 12px;
+    font:inherit;
+  }
+
   .btn{
-    background:linear-gradient(180deg,#1b2552,#121b3a);
-    border:1px solid #32407b;
-    color:#eaf0ff;
-    padding:8px 12px;
-    border-radius:10px;
     cursor:pointer;
-    font-weight:600;
-    box-shadow:0 0 0 0 rgba(77,123,255,.0), inset 0 0 12px rgba(77,123,255,.12);
-    transition:transform .12s ease, box-shadow .2s ease, border-color .2s ease, background .2s ease;
+    font-weight:700;
+    transition:transform .12s ease, box-shadow .2s ease, border-color .2s ease;
   }
 
   .btn:hover{
     transform:translateY(-1px);
-    box-shadow:0 0 16px rgba(77,123,255,.35), inset 0 0 18px rgba(77,123,255,.18);
+    border-color:rgba(112,146,255,.55);
+    box-shadow:0 0 18px rgba(93,136,255,.18);
   }
 
   .btn.alt{
-    border-color:#2d6a50;
-    background:linear-gradient(180deg,#1a4033,#122b24);
+    border-color:rgba(40,187,120,.45);
+    background:linear-gradient(180deg, rgba(23,63,50,.96), rgba(14,38,31,.96));
+  }
+
+  .btn.warn{
+    border-color:rgba(255,211,25,.45);
+    background:linear-gradient(180deg, rgba(88,70,16,.95), rgba(52,40,10,.95));
   }
 
   .toggle{
     display:flex;
     align-items:center;
     gap:8px;
+    color:var(--muted);
+    padding:0 4px;
   }
 
   .toggle input{
-    accent-color:#4d7bff;
     width:18px;
     height:18px;
+    accent-color:var(--accent);
   }
 
-  .grid{
+  .top-grid{
     display:grid;
-    grid-template-columns: 1.1fr .9fr;
+    grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+    gap:16px;
+    margin-bottom:16px;
+  }
+
+  .bottom-grid{
+    display:grid;
+    grid-template-columns:1fr;
     gap:16px;
   }
 
   .card{
-    background:linear-gradient(180deg, rgba(19,27,55,.95), rgba(12,18,38,.95));
-    border:1px solid rgba(90,110,180,.35);
-    border-radius:14px;
+    background:linear-gradient(180deg, rgba(18,27,53,.96), rgba(10,16,32,.96));
+    border:1px solid var(--line);
+    border-radius:18px;
     padding:16px;
-    box-shadow:0 0 24px rgba(77,123,255,.12), inset 0 0 20px rgba(77,123,255,.06);
+    box-shadow:0 0 24px rgba(0,0,0,.18), inset 0 0 18px rgba(93,136,255,.05);
   }
 
   .card h3{
-    margin:0 0 12px 0;
+    margin:0 0 12px;
     font-size:15px;
-    color:#baceff;
     letter-spacing:.3px;
+    color:#c8d7ff;
   }
+
+  .card p.note{
+    margin:8px 0 0;
+    color:var(--muted);
+    font-size:12px;
+    line-height:1.45;
+  }
+
+  .form-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:12px;
+  }
+
+  .field{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+
+  .field.full{grid-column:1 / -1}
+
+  .label{
+    color:#b9c8f2;
+    font-size:12px;
+    font-weight:700;
+    letter-spacing:.2px;
+  }
+
+  .row{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+
+  .message{
+    min-height:20px;
+    margin-top:10px;
+    font-size:13px;
+    font-weight:700;
+  }
+
+  .message.ok{color:var(--accent-2)}
+  .message.err{color:var(--bad)}
+  .message.warn{color:var(--warn)}
+
+  .table-wrap{overflow:auto}
 
   .table{
     width:100%;
+    min-width:920px;
     border-collapse:separate;
     border-spacing:0 8px;
   }
 
   .table th,
   .table td{
-    padding:10px 12px;
+    padding:11px 12px;
     text-align:left;
+    vertical-align:top;
   }
 
   .table th{
+    color:#afbee8;
     font-size:12px;
-    color:#aab7e8;
-    font-weight:700;
+    font-weight:800;
   }
 
   .tr{
-    background:linear-gradient(180deg, rgba(16,23,48,.85), rgba(12,18,38,.85));
-    border:1px solid rgba(90,110,180,.35);
-    border-radius:10px;
+    background:linear-gradient(180deg, rgba(16,24,49,.9), rgba(12,19,37,.9));
+  }
+
+  .tr.manual{
+    box-shadow:inset 0 0 0 1px rgba(25,255,144,.16);
   }
 
   .tr td:first-child{
-    border-top-left-radius:10px;
-    border-bottom-left-radius:10px;
+    border-top-left-radius:12px;
+    border-bottom-left-radius:12px;
   }
 
   .tr td:last-child{
-    border-top-right-radius:10px;
-    border-bottom-right-radius:10px;
+    border-top-right-radius:12px;
+    border-bottom-right-radius:12px;
   }
 
-  .chip{
-    padding:2px 8px;
-    border-radius:999px;
-    font-weight:700;
-    font-size:12px;
-  }
-
-  .chip.final{
-    background:linear-gradient(180deg,#1bffc6,#11d49c);
-    color:#052;
-  }
-
-  .chip.pending{
-    background:linear-gradient(180deg,#ffe07a,#ffc14d);
-    color:#532;
-  }
-
-  .chip.err{
-    background:linear-gradient(180deg,#ff7a9b,#ff4d73);
-    color:#311;
+  .mono{
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   }
 
   .muted{color:var(--muted)}
-  .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Geist Mono", monospace}
+
+  .sub{
+    margin-top:4px;
+    font-size:12px;
+  }
+
+  .chip{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-width:72px;
+    padding:4px 9px;
+    border-radius:999px;
+    font-size:12px;
+    font-weight:800;
+    text-transform:uppercase;
+    letter-spacing:.25px;
+  }
+
+  .chip.final{
+    background:linear-gradient(180deg,#28ffbd,#11cb94);
+    color:#053a2c;
+  }
+
+  .chip.pending{
+    background:linear-gradient(180deg,#ffe487,#ffbf4f);
+    color:#543600;
+  }
+
+  .chip.error{
+    background:linear-gradient(180deg,#ff95aa,#ff5a7a);
+    color:#4b0916;
+  }
+
+  .chip.ocr{
+    background:linear-gradient(180deg,#7f9dff,#5875f3);
+    color:#081847;
+  }
+
+  .chip.manual{
+    background:linear-gradient(180deg,#8cf5ba,#4bdc8d);
+    color:#053a2c;
+  }
 
   .logwrap{
-    height:360px;
+    height:420px;
     overflow:auto;
-    background:rgba(10,14,28,.6);
-    border:1px solid rgba(90,110,180,.35);
-    border-radius:10px;
+    border-radius:12px;
+    border:1px solid var(--line);
+    background:rgba(7,11,22,.72);
     padding:10px;
   }
 
   .logline{
     font-size:12px;
-    color:#cdd8ff;
+    line-height:1.4;
+    color:#dfe8ff;
     white-space:pre-wrap;
-    line-height:1.35;
   }
 
-  .logline .ts{color:#8aa0ff}
-  .logline .ok{color:#19ff90}
-  .logline .warn{color:#ffd319}
-  .logline .err{color:#ff3864}
+  .logline + .logline{margin-top:4px}
 
-  .sep{
-    height:1px;
-    background:linear-gradient(90deg, rgba(77,123,255,.0), rgba(77,123,255,.35), rgba(77,123,255,.0));
-    margin:12px 0;
+  .logline .ts{color:#8aa6ff}
+  .logline .ok{color:var(--accent-2)}
+  .logline .warn{color:var(--warn)}
+  .logline .err{color:var(--bad)}
+
+  .footer-note{
+    margin-top:12px;
+    color:var(--muted);
+    font-size:12px;
   }
 
-  @media (max-width: 980px){
-    .grid{grid-template-columns:1fr}
+  @media (max-width: 1080px){
+    .top-grid{grid-template-columns:1fr}
+  }
+
+  @media (max-width: 700px){
+    .hdr{flex-direction:column}
+    .form-grid{grid-template-columns:1fr}
   }
 </style>
 </head>
 <body>
 <div class="app">
   <div class="hdr">
-    <div class="title">ADMIN • Instant Cash</div>
+    <div>
+      <div class="title">Admin - Instant Cash</div>
+      <div class="subtitle">Historial, logs y carga manual para cuando el OCR falle.</div>
+    </div>
     <div class="controls">
       <label class="toggle"><input type="checkbox" id="autoref" checked> Auto-refresh</label>
-      <select id="range" class="btn">
+      <select id="range" class="select">
         <option value="today">Hoy</option>
-        <option value="all">Todo (archivo completo)</option>
+        <option value="all">Todo</option>
       </select>
       <button class="btn" id="reloadBtn">Reload</button>
-      <button class="btn alt" id="scrollEndBtn">Scroll log al final</button>
+      <button class="btn alt" id="nextDrawBtn">Siguiente sorteo</button>
+      <button class="btn warn" id="scrollEndBtn">Scroll log al final</button>
     </div>
   </div>
 
-  <div class="grid">
+  <div class="top-grid">
     <div class="card">
-      <h3>Historial del día</h3>
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Hora</th>
-            <th>Pick 2</th>
-            <th>Pick 3</th>
-            <th>Pick 4</th>
-            <th>Pick 5</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody id="tbody"></tbody>
-      </table>
+      <h3>Carga manual a latest.json</h3>
+      <div class="form-grid">
+        <div class="field">
+          <label class="label" for="manualDate">Fecha del sorteo</label>
+          <input class="input" id="manualDate" type="date">
+        </div>
+        <div class="field">
+          <label class="label" for="manualTime">Hora del sorteo (ET)</label>
+          <select class="select" id="manualTime"></select>
+        </div>
+        <div class="field">
+          <label class="label" for="pick2Input">Pick 2</label>
+          <input class="input mono" id="pick2Input" inputmode="numeric" maxlength="2" placeholder="12">
+        </div>
+        <div class="field">
+          <label class="label" for="pick3Input">Pick 3</label>
+          <input class="input mono" id="pick3Input" inputmode="numeric" maxlength="3" placeholder="123">
+        </div>
+        <div class="field">
+          <label class="label" for="pick4Input">Pick 4</label>
+          <input class="input mono" id="pick4Input" inputmode="numeric" maxlength="4" placeholder="1234">
+        </div>
+        <div class="field">
+          <label class="label" for="pick5Input">Pick 5</label>
+          <input class="input mono" id="pick5Input" inputmode="numeric" maxlength="5" placeholder="12345">
+        </div>
+        <div class="field">
+          <label class="label" for="manualStatus">Status</label>
+          <select class="select" id="manualStatus">
+            <option value="final">final</option>
+            <option value="pending">pending</option>
+          </select>
+        </div>
+        <div class="field full">
+          <div class="row">
+            <button class="btn alt" id="saveManualBtn" type="button">Guardar sorteo manual</button>
+            <button class="btn" id="clearManualBtn" type="button">Limpiar formulario</button>
+          </div>
+          <div id="manualMsg" class="message"></div>
+        </div>
+      </div>
+      <p class="note">
+        Puedes cargar el siguiente sorteo con el boton rapido o cualquier sorteo manual
+        eligiendo fecha y hora. Si el <span class="mono">draw_id</span> ya existe, se reemplaza.
+      </p>
     </div>
 
     <div class="card">
       <h3>Logs (scheduler + OCR)</h3>
       <div class="logwrap" id="logwrap"></div>
-      <div class="sep"></div>
-      <div class="muted" style="font-size:12px">
-        Origen: <span class="mono">/schedule.log</span> • JSON: <span class="mono">/latest.json</span>
+      <div class="footer-note">
+        Origen: <span class="mono">/schedule.log</span> - JSON:
+        <span class="mono">/latest.json</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom-grid">
+    <div class="card">
+      <h3>Historial</h3>
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Sorteo</th>
+              <th>Pick 2</th>
+              <th>Pick 3</th>
+              <th>Pick 4</th>
+              <th>Pick 5</th>
+              <th>Status</th>
+              <th>Origen</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
       </div>
     </div>
   </div>
 </div>
 
 <script>
-const JSON_URL = './latest.json';
-const LOG_URL  = './schedule.log';
+const JSON_URL = "/latest.json";
+const LOG_URL = "/schedule.log";
+const MANUAL_URL = "/api/latest/manual";
+const ET_TZ = "America/New_York";
 
-const tbody = document.getElementById('tbody');
-const logwrap = document.getElementById('logwrap');
-const autoref = document.getElementById('autoref');
-const rangeSel = document.getElementById('range');
+const tbody = document.getElementById("tbody");
+const logwrap = document.getElementById("logwrap");
+const autoref = document.getElementById("autoref");
+const rangeSel = document.getElementById("range");
+const manualMsg = document.getElementById("manualMsg");
 
-function asLocalTime(s){
-  if(!s) return '—';
-  const dt = new Date(s);
-  if (isNaN(dt)) return s;
-  return dt.toLocaleString();
+function pad2(n){
+  return String(n).padStart(2, "0");
+}
+
+function digitsOnly(value){
+  return String(value || "").replace(/\D+/g, "");
+}
+
+function getNyNow(){
+  return new Date(new Date().toLocaleString("en-US", { timeZone: ET_TZ }));
+}
+
+function toDateInputValue(date){
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+function toTimeValue(date){
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
+function toEtDate(iso){
+  if (!iso) return null;
+  const dt = new Date(iso);
+  if (Number.isNaN(dt.getTime())) return null;
+  return new Date(dt.toLocaleString("en-US", { timeZone: ET_TZ }));
+}
+
+function formatEt(iso){
+  const dt = toEtDate(iso);
+  if (!dt) return "--";
+  return dt.toLocaleString("en-US", {
+    month: "numeric",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  }) + " ET";
 }
 
 function isTodayISO(iso){
-  try{
-    const d = new Date(iso);
-    const now = new Date();
-    return d.getFullYear()===now.getFullYear() &&
-           d.getMonth()===now.getMonth() &&
-           d.getDate()===now.getDate();
-  }catch(e){
-    return false;
+  const d = toEtDate(iso);
+  if (!d) return false;
+  const now = getNyNow();
+  return (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  );
+}
+
+function nextDrawSlot(){
+  const now = getNyNow();
+  const slot = new Date(now);
+  slot.setSeconds(0, 0);
+
+  if (slot.getHours() < 10){
+    slot.setHours(10, 0, 0, 0);
+    return slot;
+  }
+
+  if (slot.getHours() > 22 || (slot.getHours() === 22 && slot.getMinutes() > 0)){
+    slot.setDate(slot.getDate() + 1);
+    slot.setHours(10, 0, 0, 0);
+    return slot;
+  }
+
+  if (slot.getMinutes() < 30){
+    slot.setMinutes(30, 0, 0);
+  } else {
+    slot.setHours(slot.getHours() + 1, 0, 0, 0);
+  }
+
+  if (slot.getHours() > 22 || (slot.getHours() === 22 && slot.getMinutes() > 0)){
+    slot.setDate(slot.getDate() + 1);
+    slot.setHours(10, 0, 0, 0);
+  }
+
+  return slot;
+}
+
+function timeLabelFromValue(value){
+  const [hh, mm] = String(value || "").split(":").map(Number);
+  if (!Number.isInteger(hh) || !Number.isInteger(mm)) return value;
+  const date = new Date();
+  date.setHours(hh, mm, 0, 0);
+  return date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+function populateTimeOptions(){
+  const select = document.getElementById("manualTime");
+  select.innerHTML = "";
+
+  for (let hour = 10; hour <= 22; hour += 1){
+    const minutes = hour === 22 ? [0] : [0, 30];
+    for (const minute of minutes){
+      const value = `${pad2(hour)}:${pad2(minute)}`;
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = `${timeLabelFromValue(value)} (${value})`;
+      select.appendChild(option);
+    }
   }
 }
 
+function fillFormWithNextDraw(){
+  const slot = nextDrawSlot();
+  document.getElementById("manualDate").value = toDateInputValue(slot);
+  document.getElementById("manualTime").value = toTimeValue(slot);
+  setManualMessage(
+    `Formulario preparado para el siguiente sorteo: ${formatEt(slot.toISOString())}`,
+    "warn"
+  );
+}
+
+function clearManualForm(){
+  document.getElementById("pick2Input").value = "";
+  document.getElementById("pick3Input").value = "";
+  document.getElementById("pick4Input").value = "";
+  document.getElementById("pick5Input").value = "";
+  document.getElementById("manualStatus").value = "final";
+  fillFormWithNextDraw();
+}
+
+function setManualMessage(text, kind){
+  manualMsg.textContent = text || "";
+  manualMsg.className = "message" + (kind ? ` ${kind}` : "");
+}
+
 async function fetchJSON(){
-  const res = await fetch(JSON_URL + '?nocache=' + Date.now(), {cache:'no-store'});
+  const res = await fetch(`${JSON_URL}?nocache=${Date.now()}`, { cache: "no-store" });
   const raw = await res.json();
-  return Array.isArray(raw) ? raw : raw && typeof raw === 'object' ? [raw] : [];
+  return Array.isArray(raw) ? raw : raw && typeof raw === "object" ? [raw] : [];
 }
 
 async function fetchLog(){
   try{
-    const res = await fetch(LOG_URL + '?nocache=' + Date.now(), {cache:'no-store'});
-    if(!res.ok) return '';
+    const res = await fetch(`${LOG_URL}?nocache=${Date.now()}`, { cache: "no-store" });
+    if (!res.ok) return "";
     return await res.text();
-  }catch(e){
-    return '';
-  }
-}
-
-function renderHistory(arr){
-  tbody.innerHTML = '';
-
-  const rows = [];
-  for (const e of arr) {
-    if (rangeSel.value === 'today' && !isTodayISO(e.capture_at || e.captured_at || e.draw_id)) continue;
-
-    const p2 = e.pick2 || '--';
-    const p3 = e.pick3 || '--';
-    const p4 = e.pick4 || '--';
-    const p5 = e.pick5 || '--';
-    const st = e.status || 'pending';
-
-    const tr = document.createElement('tr');
-    tr.className = 'tr';
-
-    const td0 = document.createElement('td');
-    td0.textContent = asLocalTime(e.captured_at || '');
-    td0.className = 'mono muted';
-
-    const td1 = document.createElement('td');
-    td1.textContent = p2;
-    td1.className = 'mono';
-
-    const td2 = document.createElement('td');
-    td2.textContent = p3;
-    td2.className = 'mono';
-
-    const td3 = document.createElement('td');
-    td3.textContent = p4;
-    td3.className = 'mono';
-
-    const td4 = document.createElement('td');
-    td4.textContent = p5;
-    td4.className = 'mono';
-
-    const td5 = document.createElement('td');
-    const chipClass = st === 'final' ? 'final' : st === 'pending' ? 'pending' : 'err';
-    td5.innerHTML = `<span class="chip ${chipClass}">${st}</span>`;
-
-    for (const td of [td0, td1, td2, td3, td4, td5]) {
-      tr.appendChild(td);
-    }
-
-    tbody.appendChild(tr);
-    rows.push(tr);
-  }
-
-  if (!rows.length){
-    const tr = document.createElement('tr');
-    tr.className = 'tr';
-
-    const td = document.createElement('td');
-    td.colSpan = 6;
-    td.textContent = 'Sin datos para el rango seleccionado.';
-    td.className = 'muted';
-
-    tr.appendChild(td);
-    tbody.appendChild(tr);
+  }catch{
+    return "";
   }
 }
 
 function sanitizeArray(arr){
-  try{
-    if (!Array.isArray(arr)) return [];
-    return arr.filter(x => x && typeof x === 'object');
-  }catch(e){
-    return [];
+  return Array.isArray(arr) ? arr.filter((x) => x && typeof x === "object") : [];
+}
+
+function statusClass(status){
+  if (status === "final") return "final";
+  if (status === "pending") return "pending";
+  return "error";
+}
+
+function sourceClass(source){
+  return source === "manual" ? "manual" : "ocr";
+}
+
+function renderHistory(arr){
+  tbody.innerHTML = "";
+
+  const rows = sanitizeArray(arr)
+    .filter((entry) => {
+      if (rangeSel.value !== "today") return true;
+      return isTodayISO(entry.draw_id || entry.captured_at || "");
+    })
+    .sort((a, b) => {
+      const aa = a.draw_id || "";
+      const bb = b.draw_id || "";
+      return aa < bb ? 1 : aa > bb ? -1 : 0;
+    });
+
+  if (!rows.length){
+    const tr = document.createElement("tr");
+    tr.className = "tr";
+    const td = document.createElement("td");
+    td.colSpan = 7;
+    td.textContent = "Sin datos para el rango seleccionado.";
+    td.className = "muted";
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    return;
+  }
+
+  for (const e of rows){
+    const tr = document.createElement("tr");
+    tr.className = `tr ${e.source === "manual" ? "manual" : ""}`.trim();
+
+    const drawTd = document.createElement("td");
+    const drawMain = document.createElement("div");
+    drawMain.className = "mono";
+    drawMain.textContent = formatEt(e.draw_id || e.captured_at || "");
+    const drawSub = document.createElement("div");
+    drawSub.className = "sub muted";
+    drawSub.textContent = `cargado ${formatEt(e.captured_at || "")}`;
+    drawTd.appendChild(drawMain);
+    drawTd.appendChild(drawSub);
+
+    const picks = ["pick2", "pick3", "pick4", "pick5"].map((name) => {
+      const td = document.createElement("td");
+      td.className = "mono";
+      td.textContent = e[name] || "--";
+      return td;
+    });
+
+    const statusTd = document.createElement("td");
+    const statusChip = document.createElement("span");
+    statusChip.className = `chip ${statusClass(e.status || "error")}`;
+    statusChip.textContent = e.status || "error";
+    statusTd.appendChild(statusChip);
+
+    const sourceTd = document.createElement("td");
+    const sourceChip = document.createElement("span");
+    sourceChip.className = `chip ${sourceClass(e.source || "ocr")}`;
+    sourceChip.textContent = e.source || "ocr";
+    sourceTd.appendChild(sourceChip);
+
+    tr.appendChild(drawTd);
+    picks.forEach((td) => tr.appendChild(td));
+    tr.appendChild(statusTd);
+    tr.appendChild(sourceTd);
+    tbody.appendChild(tr);
   }
 }
 
 function renderLog(text){
-  if(!text){
-    logwrap.innerHTML = '<div class="logline muted">Sin log disponible.</div>';
+  logwrap.innerHTML = "";
+
+  if (!text){
+    const div = document.createElement("div");
+    div.className = "logline muted";
+    div.textContent = "Sin log disponible.";
+    logwrap.appendChild(div);
     return;
   }
 
   const lines = text.split(/\r?\n/).filter(Boolean).slice(-800);
   const frag = document.createDocumentFragment();
 
-  for (const ln of lines){
-    const div = document.createElement('div');
-    div.className = 'logline';
+  for (const line of lines){
+    const div = document.createElement("div");
+    div.className = "logline";
 
-    const cls = /ERROR|exit=1|WATCHDOG|PermissionError/.test(ln)
-      ? 'err'
-      : /WARNING|pending/.test(ln)
-      ? 'warn'
-      : 'ok';
+    const match = line.match(/^\[(.*?)\]\s*(.*)$/);
+    const levelClass = /ERROR|PermissionError|Traceback|can't open file/i.test(line)
+      ? "err"
+      : /WARNING|pending/i.test(line)
+      ? "warn"
+      : "ok";
 
-    const m = ln.match(/^\[(.*?)\]\s*(.*)$/);
-
-    if (m){
-      div.innerHTML = `<span class="ts">[${m[1]}]</span> <span class="${cls}">${m[2]}</span>`;
+    if (match){
+      const ts = document.createElement("span");
+      ts.className = "ts";
+      ts.textContent = `[${match[1]}] `;
+      const msg = document.createElement("span");
+      msg.className = levelClass;
+      msg.textContent = match[2];
+      div.appendChild(ts);
+      div.appendChild(msg);
     } else {
-      div.textContent = ln;
+      div.textContent = line;
     }
 
     frag.appendChild(div);
   }
 
-  logwrap.innerHTML = '';
   logwrap.appendChild(frag);
 }
 
 async function refresh(){
   try{
     const arr = sanitizeArray(await fetchJSON());
-    const dataset = rangeSel.value === 'today'
-      ? arr.filter(e => isTodayISO(e.captured_at || e.draw_id || ''))
-      : arr;
-
-    renderHistory(dataset);
-  }catch(e){
-    console.error('JSON refresh error:', e);
+    renderHistory(arr);
+  }catch(err){
+    console.error("JSON refresh error:", err);
   }
 
   const log = await fetchLog();
   renderLog(log);
+}
+
+function readManualPayload(){
+  const payload = {
+    draw_date: document.getElementById("manualDate").value,
+    draw_time: document.getElementById("manualTime").value,
+    pick2: digitsOnly(document.getElementById("pick2Input").value),
+    pick3: digitsOnly(document.getElementById("pick3Input").value),
+    pick4: digitsOnly(document.getElementById("pick4Input").value),
+    pick5: digitsOnly(document.getElementById("pick5Input").value),
+    status: document.getElementById("manualStatus").value || "final",
+  };
+
+  if (!payload.draw_date) throw new Error("Elige una fecha de sorteo.");
+  if (!payload.draw_time) throw new Error("Elige una hora de sorteo.");
+
+  const lengths = { pick2: 2, pick3: 3, pick4: 4, pick5: 5 };
+  let hasValue = false;
+
+  for (const [name, len] of Object.entries(lengths)){
+    if (!payload[name]) continue;
+    hasValue = true;
+    if (payload[name].length !== len){
+      throw new Error(`${name} debe tener exactamente ${len} digitos.`);
+    }
+  }
+
+  if (!hasValue){
+    throw new Error("Ingresa por lo menos un resultado.");
+  }
+
+  return payload;
+}
+
+async function saveManualEntry(){
+  let payload;
+
+  try{
+    payload = readManualPayload();
+  }catch(err){
+    setManualMessage(err.message || String(err), "err");
+    return;
+  }
+
+  setManualMessage("Guardando sorteo manual...", "warn");
+
+  try{
+    const res = await fetch(MANUAL_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.ok){
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+
+    const drawLabel = formatEt(data.entry?.draw_id || "");
+    const replaced = data.replaced ? "Se reemplazo el sorteo existente." : "Se agrego un sorteo nuevo.";
+    setManualMessage(`${replaced} Sorteo guardado para ${drawLabel}.`, "ok");
+    await refresh();
+  }catch(err){
+    setManualMessage(err.message || String(err), "err");
+  }
 }
 
 let timer = null;
@@ -416,21 +785,23 @@ function startAuto(){
   if (timer) clearInterval(timer);
   timer = setInterval(() => {
     if (autoref.checked) refresh();
-  }, 2000);
+  }, 2500);
 }
 
-document.getElementById('reloadBtn').addEventListener('click', refresh);
-
-document.getElementById('scrollEndBtn').addEventListener('click', () => {
+document.getElementById("reloadBtn").addEventListener("click", refresh);
+document.getElementById("nextDrawBtn").addEventListener("click", fillFormWithNextDraw);
+document.getElementById("saveManualBtn").addEventListener("click", saveManualEntry);
+document.getElementById("clearManualBtn").addEventListener("click", clearManualForm);
+document.getElementById("scrollEndBtn").addEventListener("click", () => {
   logwrap.scrollTop = logwrap.scrollHeight;
 });
-
-rangeSel.addEventListener('change', refresh);
-
-autoref.addEventListener('change', () => {
+rangeSel.addEventListener("change", refresh);
+autoref.addEventListener("change", () => {
   if (autoref.checked) refresh();
 });
 
+populateTimeOptions();
+fillFormWithNextDraw();
 refresh();
 startAuto();
 </script>
