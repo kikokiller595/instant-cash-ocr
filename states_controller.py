@@ -55,6 +55,12 @@ ALLOWED_STATES = [
     "Pennsylvania Day","Pennsylvania Night",
     "New York Day","New York Night",
 ]
+PICK_LENGTHS = {
+    "pick2": 2,
+    "pick3": 3,
+    "pick4": 4,
+    "pick5": 5,
+}
 
 def now_et():
     return datetime.now(TZ)
@@ -83,6 +89,17 @@ def load_states():
         return []
     try:
         data = json.loads(STATES_JSON.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+def load_latest_entries():
+    if not LATEST_JSON.exists():
+        return []
+    try:
+        data = json.loads(LATEST_JSON.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            return [data]
         return data if isinstance(data, list) else []
     except Exception:
         return []
@@ -138,6 +155,64 @@ def close_scheduler_log_handle():
         pass
     finally:
         _SCHEDULER_LOG_HANDLE = None
+
+def digits_only(value) -> str:
+    return re.sub(r"\D+", "", str(value or ""))
+
+def sanitize_latest_pick(name: str, value) -> str:
+    digits = digits_only(value)
+    expected = PICK_LENGTHS[name]
+    if digits and len(digits) != expected:
+        raise ValueError(f"{name} must have exactly {expected} digits")
+    return digits
+
+def parse_manual_draw_dt(date_str: str, time_str: str) -> datetime:
+    date_str = (date_str or "").strip()
+    time_str = (time_str or "").strip()
+
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_str):
+        raise ValueError("draw_date must use YYYY-MM-DD")
+    if not re.fullmatch(r"\d{2}:\d{2}", time_str):
+        raise ValueError("draw_time must use HH:MM")
+
+    year, month, day = map(int, date_str.split("-"))
+    hour, minute = map(int, time_str.split(":"))
+
+    if minute not in {0, 30}:
+        raise ValueError("draw_time must be on the half hour")
+    if hour < 10 or hour > 22 or (hour == 22 and minute != 0):
+        raise ValueError("draw_time must be between 10:00 and 22:00 ET")
+
+    return datetime(year, month, day, hour, minute, 0, tzinfo=TZ)
+
+def build_manual_latest_entry(payload: dict) -> dict:
+    draw_dt = parse_manual_draw_dt(payload.get("draw_date"), payload.get("draw_time"))
+    picks = {name: sanitize_latest_pick(name, payload.get(name)) for name in PICK_LENGTHS}
+
+    if not any(picks.values()):
+        raise ValueError("enter at least one result")
+
+    status = (payload.get("status") or "final").strip().lower()
+    if status not in {"final", "pending"}:
+        raise ValueError("status must be final or pending")
+
+    entry = {
+        "draw_id": draw_dt.isoformat(),
+        "captured_at": now_et().isoformat(timespec="seconds"),
+        "status": status,
+        "source": "manual",
+        **picks,
+    }
+    return entry
+
+def upsert_latest_entry(entry: dict) -> bool:
+    data = [e for e in load_latest_entries() if isinstance(e, dict)]
+    replaced = any((e.get("draw_id") or "") == entry["draw_id"] for e in data)
+    data = [e for e in data if (e.get("draw_id") or "") != entry["draw_id"]]
+    data.append(entry)
+    data.sort(key=lambda e: (e.get("draw_id") or "", e.get("captured_at") or ""))
+    atomic_write(LATEST_JSON, data)
+    return replaced
 
 def only_digits(s: str, n: int) -> str:
     if not s: return ""
@@ -447,6 +522,22 @@ def api_batch():
 def api_list():
     items = load_states()
     return jsonify({"ok": True, "items": items})
+
+@app.post("/api/latest/manual")
+def api_latest_manual():
+    try:
+        payload = request.get_json(force=True) or {}
+        entry = build_manual_latest_entry(payload)
+        replaced = upsert_latest_entry(entry)
+        append_scheduler_log(
+            f"manual latest saved for {entry['draw_id']} "
+            f"(status={entry['status']}, replaced={'yes' if replaced else 'no'})"
+        )
+        return jsonify({"ok": True, "entry": entry, "replaced": replaced})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
 
 @app.post("/api/states/update")
 def api_update():
