@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Run OCR at HH:09:00 and HH:39:00 ET (10:00-22:00; no 22:39)
+# Run OCR at HH:11:00 and HH:41:00 ET (10:00-22:00; no 22:41)
 
 import json
 import os
@@ -15,6 +15,7 @@ TZ = ZoneInfo("America/New_York")
 SLEEP = 0.5
 GRACE_SECONDS = 3
 BASE = Path(__file__).resolve().parent
+PICKS = ("pick2", "pick3", "pick4", "pick5")
 
 
 def resolve_data_dir() -> Path:
@@ -62,18 +63,18 @@ def log(msg: str):
 
 def day_slots(d: date):
     slots = []
-    for h in range(10, 23):   # 10..22 => :09
-        slots.append(datetime(d.year, d.month, d.day, h, 9, 0, tzinfo=TZ))
-    for h in range(10, 22):   # 10..21 => :39 (no 22:39)
-        slots.append(datetime(d.year, d.month, d.day, h, 39, 0, tzinfo=TZ))
+    for h in range(10, 23):   # 10..22 => :11
+        slots.append(datetime(d.year, d.month, d.day, h, 11, 0, tzinfo=TZ))
+    for h in range(10, 22):   # 10..21 => :41 (no 22:41)
+        slots.append(datetime(d.year, d.month, d.day, h, 41, 0, tzinfo=TZ))
     slots.sort()
     return slots
 
 
 def draw_dt_for_run_slot(run_at: datetime) -> datetime:
-    if run_at.minute == 9:
+    if run_at.minute == 11:
         return run_at.replace(minute=0, second=0, microsecond=0)
-    if run_at.minute == 39:
+    if run_at.minute == 41:
         return run_at.replace(minute=30, second=0, microsecond=0)
     raise ValueError(f"Unexpected run slot minute: {run_at.minute}")
 
@@ -123,6 +124,18 @@ def pick_best_entry_for_draw(data, expected_iso: str):
     return matches[-1]
 
 
+def previous_draw_iso(expected_iso: str) -> str | None:
+    try:
+        draw_dt = datetime.fromisoformat(expected_iso)
+    except ValueError:
+        return None
+    return (draw_dt - timedelta(minutes=30)).isoformat()
+
+
+def same_pick_set(left: dict, right: dict) -> bool:
+    return all((left.get(name, "") or "") == (right.get(name, "") or "") for name in PICKS)
+
+
 def validate_latest_for_slot(expected_iso: str):
     path, data = read_latest()
 
@@ -147,6 +160,12 @@ def validate_latest_for_slot(expected_iso: str):
     )
     if not ok:
         return False, "picks incomplete or wrong length"
+
+    prev_iso = previous_draw_iso(expected_iso)
+    if prev_iso:
+        prev_entry = pick_best_entry_for_draw(data, prev_iso)
+        if prev_entry and prev_entry.get("status") == "final" and same_pick_set(entry, prev_entry):
+            return False, f"entry matches previous draw {prev_iso}"
 
     return (
         True,
@@ -194,7 +213,7 @@ def run_ocr_once(expected_iso: str):
 
 def try_with_retries(run_at: datetime):
     expected_iso = draw_dt_for_run_slot(run_at).isoformat()
-    delays = [0, 12, 5]
+    delays = [0, 45, 90]
 
     last_note = ""
     last_exit = None
@@ -265,7 +284,7 @@ def main():
             )
         return
 
-    log(f"Scheduler up (:09:00, :39:00) - BOT={BOT}")
+    log(f"Scheduler up (:11:00, :41:00) - BOT={BOT}")
     last_run_at = None
 
     while True:
