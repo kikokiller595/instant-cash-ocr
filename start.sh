@@ -10,7 +10,7 @@ touch "${LOG_FILE}"
 
 flag="$(printf '%s' "${RUN_OCR_SCHEDULER:-0}" | tr '[:upper:]' '[:lower:]')"
 if [ "${flag}" = "1" ] || [ "${flag}" = "true" ] || [ "${flag}" = "yes" ] || [ "${flag}" = "on" ]; then
-  python /app/site/scheduler.py >> "${LOG_FILE}" 2>&1 &
+  python /app/scheduler.py >> "${LOG_FILE}" 2>&1 &
   echo "$!" > "${PID_FILE}"
 fi
 
