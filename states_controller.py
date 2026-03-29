@@ -214,6 +214,17 @@ def upsert_latest_entry(entry: dict) -> bool:
     atomic_write(LATEST_JSON, data)
     return replaced
 
+def delete_latest_entry(draw_id: str) -> bool:
+    draw_id = (draw_id or "").strip()
+    if not draw_id:
+        return False
+    data = [e for e in load_latest_entries() if isinstance(e, dict)]
+    new_data = [e for e in data if (e.get("draw_id") or "") != draw_id]
+    if len(new_data) == len(data):
+        return False
+    atomic_write(LATEST_JSON, new_data)
+    return True
+
 def only_digits(s: str, n: int) -> str:
     if not s: return ""
     return re.sub(r"\D+", "", str(s))[:n]
@@ -534,6 +545,26 @@ def api_latest_manual():
             f"(status={entry['status']}, replaced={'yes' if replaced else 'no'})"
         )
         return jsonify({"ok": True, "entry": entry, "replaced": replaced})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+@app.post("/api/latest/delete")
+def api_latest_delete():
+    try:
+        payload = request.get_json(force=True) or {}
+        draw_id = (payload.get("draw_id") or "").strip()
+        if not draw_id:
+            draw_dt = parse_manual_draw_dt(payload.get("draw_date"), payload.get("draw_time"))
+            draw_id = draw_dt.isoformat()
+
+        deleted = delete_latest_entry(draw_id)
+        if not deleted:
+            return jsonify({"ok": False, "error": "draw not found", "draw_id": draw_id}), 404
+
+        append_scheduler_log(f"manual latest deleted for {draw_id}")
+        return jsonify({"ok": True, "draw_id": draw_id})
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     except Exception as exc:
