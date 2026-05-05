@@ -33,6 +33,7 @@ Variables utiles:
 - `DATA_DIR=/data` para guardar `latest.json`, `states.json` y `schedule.log` en un volumen persistente
 - `RUN_OCR_SCHEDULER=1` si quieres que el OCR se ejecute solo en segundo plano
 - `PLAYWRIGHT_HEADLESS=1` recomendado en Railway
+- `DAILY_RESET_ENABLED=1` limpia `latest.json`, `states.json`, `schedule.log` y reinicia el scheduler a las 12:00 AM ET. Viene activo por defecto.
 
 Recomendado en Railway:
 

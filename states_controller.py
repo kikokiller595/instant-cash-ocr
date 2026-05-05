@@ -4,6 +4,7 @@ import atexit
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import threading
@@ -40,12 +41,16 @@ STATES_JSON = (DATA_DIR / "states.json").resolve()
 LATEST_JSON = (DATA_DIR / "latest.json").resolve()
 SCHEDULE_LOG = (DATA_DIR / "schedule.log").resolve()
 SCHEDULER_PID_FILE = (DATA_DIR / "scheduler.pid").resolve()
-SCHEDULER_PY = (SITE / "scheduler.py").resolve()
+SCHEDULER_PY = (BASE / "scheduler.py").resolve()
+PAGE_SCREENSHOT = (DATA_DIR / "page.png").resolve()
+DAILY_RESET_MARKER = (DATA_DIR / ".daily_reset_date").resolve()
 
 _SCHEDULER_PROC = None
 _SCHEDULER_LOG_HANDLE = None
 _SCHEDULER_MONITOR = None
 _SCHEDULER_STOP = threading.Event()
+_DAILY_RESET_THREAD = None
+_DAILY_RESET_STOP = threading.Event()
 
 ALLOWED_STATES = [
     "Georgia Morning","Georgia Evening","Georgia Night",
@@ -104,6 +109,53 @@ def load_latest_entries():
     except Exception:
         return []
 
+
+def previous_draw_id(draw_id: str) -> str | None:
+    try:
+        draw_dt = datetime.fromisoformat(draw_id)
+    except Exception:
+        return None
+    return (draw_dt - timedelta(minutes=30)).isoformat()
+
+
+def same_latest_picks(left: dict, right: dict) -> bool:
+    return all((left.get(name, "") or "") == (right.get(name, "") or "") for name in PICK_LENGTHS)
+
+
+def clean_duplicate_entries(entries: list[dict]) -> tuple[list[dict], bool]:
+    clean_entries = [e for e in entries if isinstance(e, dict)]
+    by_draw = {}
+    for entry in clean_entries:
+        draw_id = entry.get("draw_id")
+        if not draw_id:
+            continue
+        current = by_draw.get(draw_id)
+        if current is None:
+            by_draw[draw_id] = entry
+            continue
+        current_final = current.get("status") == "final"
+        entry_final = entry.get("status") == "final"
+        if (not current_final and entry_final) or (entry.get("captured_at", "") > current.get("captured_at", "")):
+            by_draw[draw_id] = entry
+
+    cleaned = []
+    removed = False
+    for entry in clean_entries:
+        if entry.get("status") != "final":
+            cleaned.append(entry)
+            continue
+
+        prev_id = previous_draw_id(entry.get("draw_id", ""))
+        prev_entry = by_draw.get(prev_id or "")
+        if prev_entry and prev_entry.get("status") == "final" and same_latest_picks(entry, prev_entry):
+            removed = True
+            continue
+
+        cleaned.append(entry)
+
+    return cleaned, removed
+
+
 def atomic_write(path: Path, payload):
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -130,20 +182,56 @@ def append_scheduler_log(message: str):
 def process_is_alive(pid: int) -> bool:
     if pid <= 0:
         return False
+    if pid == os.getpid():
+        return True
     try:
         os.kill(pid, 0)
         return True
     except OSError:
         return False
 
-def pid_file_running() -> bool:
+def read_scheduler_pid() -> int | None:
     try:
         raw = SCHEDULER_PID_FILE.read_text(encoding="utf-8").strip()
         if not raw:
-            return False
-        return process_is_alive(int(raw))
+            return None
+        return int(raw)
     except Exception:
+        return None
+
+def pid_file_running() -> bool:
+    pid = read_scheduler_pid()
+    if pid is None:
         return False
+    return process_is_alive(pid)
+
+def remove_scheduler_pid_file():
+    try:
+        SCHEDULER_PID_FILE.unlink()
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
+
+def terminate_process(pid: int, timeout: float = 10.0):
+    if pid <= 0 or pid == os.getpid():
+        return
+
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except OSError:
+        return
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if not process_is_alive(pid):
+            return
+        time.sleep(0.2)
+
+    try:
+        os.kill(pid, getattr(signal, "SIGKILL", signal.SIGTERM))
+    except OSError:
+        pass
 
 def close_scheduler_log_handle():
     global _SCHEDULER_LOG_HANDLE
@@ -352,16 +440,17 @@ def launch_scheduler_process():
     env.setdefault("PYTHONUNBUFFERED", "1")
     SCHEDULE_LOG.parent.mkdir(parents=True, exist_ok=True)
     close_scheduler_log_handle()
-    _SCHEDULER_LOG_HANDLE = SCHEDULE_LOG.open("a", encoding="utf-8", buffering=1)
     append_scheduler_log(f"launching scheduler -> {SCHEDULER_PY}")
     _SCHEDULER_PROC = subprocess.Popen(
         [sys.executable, str(SCHEDULER_PY)],
-        cwd=str(SITE),
+        cwd=str(BASE),
         env=env,
         stdin=subprocess.DEVNULL,
-        stdout=_SCHEDULER_LOG_HANDLE,
-        stderr=subprocess.STDOUT,
     )
+    try:
+        SCHEDULER_PID_FILE.write_text(str(_SCHEDULER_PROC.pid), encoding="utf-8")
+    except Exception:
+        pass
     return _SCHEDULER_PROC
 
 def scheduler_supervisor_loop():
@@ -404,7 +493,11 @@ def start_scheduler_if_enabled():
     if _SCHEDULER_PROC is not None and _SCHEDULER_PROC.poll() is None:
         return _SCHEDULER_PROC
     if _SCHEDULER_MONITOR is not None and _SCHEDULER_MONITOR.is_alive():
-        return _SCHEDULER_PROC
+        if _SCHEDULER_STOP.is_set():
+            _SCHEDULER_MONITOR.join(timeout=2)
+        if _SCHEDULER_MONITOR.is_alive():
+            return _SCHEDULER_PROC
+        _SCHEDULER_MONITOR = None
 
     _SCHEDULER_STOP.clear()
     try:
@@ -421,26 +514,143 @@ def start_scheduler_if_enabled():
     return _SCHEDULER_PROC
 
 def stop_scheduler():
-    global _SCHEDULER_PROC
+    global _SCHEDULER_PROC, _SCHEDULER_MONITOR
     _SCHEDULER_STOP.set()
-    if _SCHEDULER_PROC is None:
-        close_scheduler_log_handle()
-        return
-    if _SCHEDULER_PROC.poll() is not None:
-        _SCHEDULER_PROC = None
-        close_scheduler_log_handle()
-        return
-    try:
-        _SCHEDULER_PROC.terminate()
-        _SCHEDULER_PROC.wait(timeout=10)
-    except Exception:
+    pid = read_scheduler_pid()
+
+    if _SCHEDULER_PROC is not None and _SCHEDULER_PROC.poll() is None:
         try:
-            _SCHEDULER_PROC.kill()
+            _SCHEDULER_PROC.terminate()
+            _SCHEDULER_PROC.wait(timeout=10)
+        except Exception:
+            try:
+                _SCHEDULER_PROC.kill()
+            except Exception:
+                pass
+
+    _SCHEDULER_PROC = None
+    if pid is not None:
+        terminate_process(pid)
+    remove_scheduler_pid_file()
+    close_scheduler_log_handle()
+
+    monitor = _SCHEDULER_MONITOR
+    if monitor is not None and monitor.is_alive() and threading.current_thread() is not monitor:
+        monitor.join(timeout=6)
+    if monitor is not None and not monitor.is_alive():
+        _SCHEDULER_MONITOR = None
+
+def daily_reset_enabled() -> bool:
+    return env_flag("DAILY_RESET_ENABLED", default=True)
+
+def read_daily_reset_marker() -> str:
+    try:
+        return DAILY_RESET_MARKER.read_text(encoding="utf-8").strip()
+    except Exception:
+        return ""
+
+def write_daily_reset_marker(day: str):
+    try:
+        DAILY_RESET_MARKER.write_text(day, encoding="utf-8")
+    except Exception:
+        pass
+
+def next_midnight_et(ref: datetime | None = None) -> datetime:
+    ref = ref or now_et()
+    next_day = ref.date() + timedelta(days=1)
+    return datetime.combine(next_day, d_time(0, 0), TZ)
+
+def remove_runtime_artifacts():
+    for path in (
+        PAGE_SCREENSHOT,
+        LATEST_JSON.with_suffix(LATEST_JSON.suffix + ".tmp"),
+        LATEST_JSON.with_suffix(LATEST_JSON.suffix + ".next"),
+    ):
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
         except Exception:
             pass
-    finally:
-        _SCHEDULER_PROC = None
-        close_scheduler_log_handle()
+
+def reset_runtime_for_new_day(reason: str = "daily midnight reset"):
+    day = now_et().date().isoformat()
+    if read_daily_reset_marker() == day:
+        return
+
+    stop_scheduler()
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+    try:
+        atomic_write(STATES_JSON, [])
+    except Exception:
+        pass
+    try:
+        atomic_write(LATEST_JSON, [])
+    except Exception:
+        pass
+
+    remove_runtime_artifacts()
+
+    try:
+        SCHEDULE_LOG.write_text("", encoding="utf-8")
+    except Exception:
+        pass
+
+    write_daily_reset_marker(day)
+    append_scheduler_log(f"{reason} completed; runtime files cleared for {day}")
+
+    if env_flag("RUN_OCR_SCHEDULER", default=False):
+        start_scheduler_if_enabled()
+
+def reset_for_new_day_if_needed():
+    if not daily_reset_enabled():
+        return
+
+    now = now_et()
+    day = now.date().isoformat()
+    if read_daily_reset_marker() == day:
+        return
+
+    if now.hour < 10:
+        reset_runtime_for_new_day("startup daily reset")
+
+def daily_reset_loop():
+    while not _DAILY_RESET_STOP.is_set():
+        target = next_midnight_et()
+        while not _DAILY_RESET_STOP.is_set():
+            remaining = (target - now_et()).total_seconds()
+            if remaining <= 0:
+                break
+            _DAILY_RESET_STOP.wait(min(60, max(1, remaining)))
+
+        if _DAILY_RESET_STOP.is_set():
+            break
+
+        reset_runtime_for_new_day("daily midnight reset")
+        _DAILY_RESET_STOP.wait(2)
+
+def start_daily_reset_if_enabled():
+    global _DAILY_RESET_THREAD
+    if not daily_reset_enabled():
+        return None
+
+    reset_for_new_day_if_needed()
+
+    if _DAILY_RESET_THREAD is not None and _DAILY_RESET_THREAD.is_alive():
+        return _DAILY_RESET_THREAD
+
+    _DAILY_RESET_STOP.clear()
+    _DAILY_RESET_THREAD = threading.Thread(
+        target=daily_reset_loop,
+        name="daily-reset",
+        daemon=True,
+    )
+    _DAILY_RESET_THREAD.start()
+    return _DAILY_RESET_THREAD
+
+def stop_daily_reset():
+    _DAILY_RESET_STOP.set()
 
 def send_site_file(filename: str):
     if filename.startswith("."):
@@ -459,6 +669,7 @@ def send_data_file(path: Path, mimetype: str | None = None):
     return send_from_directory(path.parent, path.name, **kwargs)
 
 ensure_runtime_files()
+atexit.register(stop_daily_reset)
 atexit.register(stop_scheduler)
 
 app = Flask(__name__, static_folder=None)
@@ -487,7 +698,14 @@ def serve_log():
 @app.get("/latest.json")
 def serve_latest():
     ensure_runtime_files()
-    return send_data_file(LATEST_JSON, mimetype="application/json")
+    entries, removed = clean_duplicate_entries(load_latest_entries())
+    if removed:
+        try:
+            atomic_write(LATEST_JSON, entries)
+            append_scheduler_log("removed duplicate latest entry matching the previous draw")
+        except Exception:
+            pass
+    return Response(json.dumps(entries, ensure_ascii=False, indent=2), mimetype="application/json")
 
 @app.get("/states.json")
 def serve_states_json():
@@ -515,6 +733,9 @@ def health():
         "scheduler_running": scheduler_running,
         "scheduler_exit_code": scheduler_exit_code,
         "scheduler_monitor_alive": _SCHEDULER_MONITOR is not None and _SCHEDULER_MONITOR.is_alive(),
+        "daily_reset_enabled": daily_reset_enabled(),
+        "daily_reset_marker": read_daily_reset_marker(),
+        "daily_reset_thread_alive": _DAILY_RESET_THREAD is not None and _DAILY_RESET_THREAD.is_alive(),
     })
 
 @app.post("/api/states/batch")
@@ -606,6 +827,7 @@ def serve_assets(filename: str):
         abort(404)
     return send_site_file(filename)
 
+start_daily_reset_if_enabled()
 start_scheduler_if_enabled()
 
 if __name__ == "__main__":

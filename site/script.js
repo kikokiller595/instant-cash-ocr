@@ -675,6 +675,64 @@ function resultIsDisplayable(data) {
   )
 }
 
+function drawKeyFromSlot(slot) {
+  return [
+    slot.getFullYear(),
+    String(slot.getMonth() + 1).padStart(2, "0"),
+    String(slot.getDate()).padStart(2, "0"),
+    String(slot.getHours()).padStart(2, "0"),
+    String(slot.getMinutes()).padStart(2, "0"),
+  ].join(":")
+}
+
+function drawKey(drawId) {
+  const slot = slotFromIso(drawId)
+  return slot ? drawKeyFromSlot(slot) : ""
+}
+
+function previousDrawKey(drawId) {
+  const slot = slotFromIso(drawId)
+  if (!slot) return ""
+  slot.setMinutes(slot.getMinutes() - 30)
+  return drawKeyFromSlot(slot)
+}
+
+function sameResultPicks(left, right) {
+  return ["pick2", "pick3", "pick4", "pick5"].every((name) => {
+    return digitsOnly(left && left[name]) === digitsOnly(right && right[name])
+  })
+}
+
+function removeDuplicateResults(items) {
+  const bestByDraw = new Map()
+
+  for (const item of items) {
+    const key = drawKey(item.draw_id)
+    if (!key) continue
+
+    const current = bestByDraw.get(key)
+    if (!current) {
+      bestByDraw.set(key, item)
+      continue
+    }
+
+    const currentFinal = current.status === "final"
+    const itemFinal = item.status === "final"
+    if ((!currentFinal && itemFinal) || String(item.captured_at || "") > String(current.captured_at || "")) {
+      bestByDraw.set(key, item)
+    }
+  }
+
+  return items.filter((item) => {
+    if (!item || item.status !== "final") return true
+
+    const prev = bestByDraw.get(previousDrawKey(item.draw_id))
+    if (!prev || prev.status !== "final") return true
+
+    return !sameResultPicks(item, prev)
+  })
+}
+
 async function loadLatest() {
   try {
     const r = await fetch("./latest.json?t=" + Date.now(), { cache: "no-store" })
@@ -688,7 +746,7 @@ async function loadLatest() {
       return
     }
 
-    const visible = dataArr
+    const visible = removeDuplicateResults(dataArr)
       .filter(resultIsDisplayable)
       .sort((a, b) => (a.draw_id < b.draw_id ? 1 : -1))
 

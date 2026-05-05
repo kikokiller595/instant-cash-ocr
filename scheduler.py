@@ -36,9 +36,10 @@ CANDIDATES = [
     BASE / "site" / "screenshot_ocr.py",
     BASE.parent / "site" / "screenshot_ocr.py",
 ]
-BOT = next((p.resolve() for p in CANDIDATES if p.exists()), None)
-if BOT is None:
+BOT_CANDIDATE = next((p for p in CANDIDATES if p.exists()), None)
+if BOT_CANDIDATE is None:
     raise SystemExit("ERROR: screenshot_ocr.py not found near scheduler.py")
+BOT = BOT_CANDIDATE.resolve()
 
 LATEST_CANDIDATES = [
     DATA_DIR / "latest.json",
@@ -174,7 +175,7 @@ def validate_latest_for_slot(expected_iso: str):
 
 
 def run_ocr_once(expected_iso: str):
-    cmd = [sys.executable, str(BOT), "--now"]
+    cmd = [sys.executable, str(BOT), "--now", "--draw-id", expected_iso]
     log(f"Running OCR: {' '.join(cmd)} (cwd={BOT.parent})")
 
     try:
@@ -208,6 +209,8 @@ def run_ocr_once(expected_iso: str):
     log(f"OCR exit={exitcode}")
 
     ok, note = validate_latest_for_slot(expected_iso)
+    if exitcode != 0 and not ok:
+        note = f"OCR failed with exit={exitcode}; {note}"
     return ok, note, exitcode
 
 

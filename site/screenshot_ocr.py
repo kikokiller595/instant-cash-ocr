@@ -7,7 +7,7 @@ import json
 import time as _t
 import argparse
 from pathlib import Path
-from datetime import datetime, time as dtime
+from datetime import datetime, time as dtime, timedelta
 from zoneinfo import ZoneInfo
 
 import cv2
@@ -95,12 +95,26 @@ def screenshot_page(path, wait_ms=None):
     if wait_ms is not None:
         effective_wait_ms = max(FORCED_WAIT_MS, int(wait_ms))
 
+    path.parent.mkdir(parents=True, exist_ok=True)
+
     with sync_playwright() as p:
+        browser = None
+        context = None
         launch_args = [
             f"--window-size={width},{height}",
             "--high-dpi-support=1",
             "--force-device-scale-factor=1",
             "--disable-dev-shm-usage",
+            "--disable-background-networking",
+            "--disable-background-timer-throttling",
+            "--disable-default-apps",
+            "--disable-extensions",
+            "--disable-gpu",
+            "--disable-sync",
+            "--metrics-recording-only",
+            "--mute-audio",
+            "--no-default-browser-check",
+            "--no-first-run",
             "--no-sandbox",
         ]
         launch_kwargs = {
@@ -110,44 +124,54 @@ def screenshot_page(path, wait_ms=None):
         if browser_channel:
             launch_kwargs["channel"] = browser_channel
         try:
-            browser = p.chromium.launch(**launch_kwargs)
-        except Exception:
-            launch_kwargs.pop("channel", None)
-            browser = p.chromium.launch(**launch_kwargs)
+            try:
+                browser = p.chromium.launch(**launch_kwargs)
+            except Exception:
+                launch_kwargs.pop("channel", None)
+                browser = p.chromium.launch(**launch_kwargs)
 
-        context = browser.new_context(
-            viewport={"width": width, "height": height},
-            device_scale_factor=1,
-            screen={"width": width, "height": height},
-            timezone_id="America/New_York",
-            locale="en-US",
-            ignore_https_errors=True,
-        )
+            context = browser.new_context(
+                viewport={"width": width, "height": height},
+                device_scale_factor=1,
+                screen={"width": width, "height": height},
+                timezone_id="America/New_York",
+                locale="en-US",
+                ignore_https_errors=True,
+            )
 
-        page = context.new_page()
-        page.goto(page_url, wait_until="domcontentloaded", timeout=60000)
+            page = context.new_page()
+            page.goto(page_url, wait_until="domcontentloaded", timeout=60000)
 
-        try:
-            page.wait_for_load_state("networkidle", timeout=30000)
-        except Exception:
-            pass
+            try:
+                page.wait_for_load_state("networkidle", timeout=30000)
+            except Exception:
+                pass
 
-        page.add_style_tag(content="""
-            html, body { margin:0 !important; padding:0 !important; overflow:auto !important; }
-            * { animation:none !important; transition:none !important; }
-        """)
+            page.add_style_tag(content="""
+                html, body { margin:0 !important; padding:0 !important; overflow:auto !important; }
+                * { animation:none !important; transition:none !important; }
+            """)
 
-        page.set_viewport_size({"width": width, "height": height})
-        page.evaluate("document.body.style.zoom='100%'")
-        _ensure_stable_viewport(page, width, height, target_dpr=1.0, max_wait_ms=2000)
+            page.set_viewport_size({"width": width, "height": height})
+            page.evaluate("document.body.style.zoom='100%'")
+            _ensure_stable_viewport(page, width, height, target_dpr=1.0, max_wait_ms=2000)
 
-        page.wait_for_timeout(effective_wait_ms)
+            page.wait_for_timeout(effective_wait_ms)
 
-        page.evaluate("window.scrollTo(0, 0)")
-        page.screenshot(path=str(path), full_page=full_page)
-
-        context.close()
-        browser.close()
+            page.evaluate("window.scrollTo(0, 0)")
+            screenshot_bytes = page.screenshot(full_page=full_page)
+            path.write_bytes(screenshot_bytes)
+        finally:
+            if context is not None:
+                try:
+                    context.close()
+                except Exception:
+                    pass
+            if browser is not None:
+                try:
+                    browser.close()
+                except Exception:
+                    pass
 
 
 def crop_with_pad(pil_img, roi, pad=10):
@@ -434,6 +458,24 @@ def load_previous_result():
         return []
 
 
+def parse_draw_id(raw):
+    raw = (raw or "").strip()
+    if not raw:
+        raise ValueError("draw_id is required")
+
+    try:
+        draw_time = datetime.fromisoformat(raw)
+    except ValueError as exc:
+        raise ValueError("draw_id must be a valid ISO datetime") from exc
+
+    if draw_time.tzinfo is None:
+        draw_time = draw_time.replace(tzinfo=TZ)
+    else:
+        draw_time = draw_time.astimezone(TZ)
+
+    return draw_time.replace(second=0, microsecond=0)
+
+
 def compute_draw_time_et():
     now = datetime.now(TZ)
 
@@ -452,6 +494,25 @@ def compute_draw_time_et():
     return dt
 
 
+def best_entry_for_draw(entries, draw_id):
+    matches = [
+        e for e in entries
+        if isinstance(e, dict) and e.get("draw_id") == draw_id
+    ]
+    if not matches:
+        return None
+
+    matches.sort(key=lambda e: (
+        1 if e.get("status") == "final" else 0,
+        str(e.get("captured_at", "")),
+    ))
+    return matches[-1]
+
+
+def same_pick_set(entry, results):
+    return all((entry.get(k, "") or "") == (results.get(k, "") or "") for k in PICKS)
+
+
 def is_final(res):
     for k, n in EXPECTED.items():
         if len(re.sub(r"\D", "", res.get(k, "") or "")) != n:
@@ -459,31 +520,10 @@ def is_final(res):
     return True
 
 
-def write_latest_json(results, status):
+def store_latest_entries(entries):
     BASE.mkdir(parents=True, exist_ok=True)
-    draw_time = compute_draw_time_et()
-    draw_id = draw_time.isoformat()
-
-    prev = load_previous_result()
-
-    for e in prev:
-        if e.get("draw_id") == draw_id:
-            same_numbers = all((e.get(k, "") or "") == (results.get(k, "") or "") for k in PICKS)
-            if same_numbers and e.get("status") == status:
-                return False, draw_id
-            break
-
-    payload = {
-        "draw_id": draw_id,
-        "captured_at": datetime.now(TZ).isoformat(timespec="seconds"),
-        "status": status,
-        "pick2": results.get("pick2", ""),
-        "pick3": results.get("pick3", ""),
-        "pick4": results.get("pick4", ""),
-        "pick5": results.get("pick5", ""),
-    }
-
-    new_data = [e for e in prev if e.get("draw_id") != draw_id] + [payload]
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    new_data = [e for e in entries if isinstance(e, dict)]
     new_data.sort(key=lambda x: x.get("draw_id", ""))
 
     tmp = str(LATEST_JSON) + ".tmp"
@@ -499,7 +539,7 @@ def write_latest_json(results, status):
     for _ in range(12):
         try:
             os.replace(tmp, LATEST_JSON)
-            return True, draw_id
+            return True
         except PermissionError as e:
             last_err = e
             _t.sleep(0.5)
@@ -512,7 +552,47 @@ def write_latest_json(results, status):
     if last_err is not None:
         raise last_err
 
-    return False, draw_id
+    return False
+
+
+def write_latest_json(results, status, draw_time=None):
+    draw_time = draw_time or compute_draw_time_et()
+    draw_id = draw_time.isoformat()
+    prev = load_previous_result()
+
+    prev_draw_id = (draw_time - timedelta(minutes=30)).isoformat()
+    prev_entry = best_entry_for_draw(prev, prev_draw_id)
+    if prev_entry and prev_entry.get("status") == "final" and same_pick_set(prev_entry, results):
+        cleaned = [
+            e for e in prev
+            if not (
+                e.get("draw_id") == draw_id
+                and e.get("source", "ocr") != "manual"
+                and same_pick_set(e, results)
+            )
+        ]
+        if len(cleaned) != len(prev):
+            store_latest_entries(cleaned)
+            return True, draw_id, f"removed stale OCR entry that matched previous draw {prev_draw_id}", False
+        return False, draw_id, f"stale OCR result matches previous draw {prev_draw_id}", False
+
+    existing = best_entry_for_draw(prev, draw_id)
+    if existing and same_pick_set(existing, results) and existing.get("status") == status:
+        return False, draw_id, "same result for this draw time - no update", True
+
+    payload = {
+        "draw_id": draw_id,
+        "captured_at": datetime.now(TZ).isoformat(timespec="seconds"),
+        "status": status,
+        "source": "ocr",
+        "pick2": results.get("pick2", ""),
+        "pick3": results.get("pick3", ""),
+        "pick4": results.get("pick4", ""),
+        "pick5": results.get("pick5", ""),
+    }
+
+    store_latest_entries([e for e in prev if e.get("draw_id") != draw_id] + [payload])
+    return True, draw_id, "latest.json updated", True
 
 
 def detect_all(base_img, cfg):
@@ -546,9 +626,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--now", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--attempt", type=int, default=1, help=argparse.SUPPRESS)
+    parser.add_argument("--draw-id", default=None, help=argparse.SUPPRESS)
     parser.add_argument("--shot-only", action="store_true", help="Take page.png and exit")
     parser.add_argument("--wait-ms", type=int, default=None, help="Override wait before screenshot")
     args = parser.parse_args()
+
+    try:
+        draw_time = parse_draw_id(args.draw_id) if args.draw_id else compute_draw_time_et()
+    except ValueError as exc:
+        parser.error(str(exc))
 
     screenshot_page(PAGE_SCREENSHOT, wait_ms=args.wait_ms)
 
@@ -567,11 +653,14 @@ def main():
         print("OCR incomplete -> not saving latest.json this run")
         return
 
-    was_updated, _ = write_latest_json(results, "final")
-    draw_time = compute_draw_time_et()
+    was_updated, _, note, accepted = write_latest_json(results, "final", draw_time=draw_time)
+
+    if not accepted:
+        print(f"Rejected draw {draw_time.strftime('%Y-%m-%d %H:%M')}: {note}")
+        raise SystemExit(2)
 
     print(f"Draw: {draw_time.strftime('%Y-%m-%d %H:%M')} Numbers: {' '.join(results[k] for k in PICKS)}")
-    print("latest.json updated" if was_updated else "same result for this draw time - no update")
+    print(note if was_updated else "same result for this draw time - no update")
 
 
 if __name__ == "__main__":
