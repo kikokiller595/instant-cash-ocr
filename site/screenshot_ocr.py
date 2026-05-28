@@ -4,6 +4,7 @@
 import os
 import re
 import json
+import signal
 import time as _t
 import argparse
 from pathlib import Path
@@ -53,6 +54,11 @@ LATEST_JSON = (DATA_DIR / "latest.json").resolve()
 PAGE_SCREENSHOT = (DATA_DIR / "page.png").resolve()
 
 FORCED_WAIT_MS = 10000  # minimum wait before screenshot
+BROWSER_CLEANUP_MARKERS = (
+    "chrome-headless-shell",
+    "/ms-playwright/",
+    "playwright_chromiumdev_profile",
+)
 
 
 def load_cfg():
@@ -72,6 +78,58 @@ def _ensure_stable_viewport(page, width, height, target_dpr=1.0, max_wait_ms=200
             page.evaluate("document.body.style.zoom='100%'")
             reapplied = True
         page.wait_for_timeout(100)
+
+
+def _read_proc_text(path):
+    try:
+        return path.read_bytes().replace(b"\x00", b" ").decode("utf-8", "ignore")
+    except Exception:
+        return ""
+
+
+def _is_playwright_browser_process(pid):
+    if pid <= 0 or pid == os.getpid():
+        return False
+
+    proc_dir = Path("/proc") / str(pid)
+    text = f"{_read_proc_text(proc_dir / 'comm')} {_read_proc_text(proc_dir / 'cmdline')}".lower()
+    if not text.strip():
+        return False
+
+    if any(marker in text for marker in BROWSER_CLEANUP_MARKERS):
+        return True
+
+    browser_name = "chromium" in text or re.search(r"\bchrome\b", text) is not None
+    return browser_name and ("--remote-debugging-pipe" in text or "--headless" in text)
+
+
+def cleanup_stale_browser_processes():
+    if os.name != "posix":
+        return
+
+    proc_root = Path("/proc")
+    if not proc_root.exists():
+        return
+
+    victims = []
+    for child in proc_root.iterdir():
+        if not child.name.isdigit():
+            continue
+        pid = int(child.name)
+        if _is_playwright_browser_process(pid):
+            victims.append(pid)
+
+    if not victims:
+        return
+
+    for sig, wait_s in ((signal.SIGTERM, 0.35), (getattr(signal, "SIGKILL", signal.SIGTERM), 0.0)):
+        for pid in victims:
+            try:
+                os.kill(pid, sig)
+            except OSError:
+                pass
+        if wait_s:
+            _t.sleep(wait_s)
 
 
 def screenshot_page(path, wait_ms=None):
@@ -96,6 +154,7 @@ def screenshot_page(path, wait_ms=None):
         effective_wait_ms = max(FORCED_WAIT_MS, int(wait_ms))
 
     path.parent.mkdir(parents=True, exist_ok=True)
+    cleanup_stale_browser_processes()
 
     with sync_playwright() as p:
         browser = None
@@ -116,7 +175,12 @@ def screenshot_page(path, wait_ms=None):
             "--no-default-browser-check",
             "--no-first-run",
             "--no-sandbox",
+            "--no-zygote",
+            "--renderer-process-limit=1",
         ]
+        if env_flag("PLAYWRIGHT_SINGLE_PROCESS", True):
+            launch_args.append("--single-process")
+
         launch_kwargs = {
             "headless": headless,
             "args": launch_args,

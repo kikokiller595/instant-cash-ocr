@@ -51,6 +51,11 @@ _SCHEDULER_MONITOR = None
 _SCHEDULER_STOP = threading.Event()
 _DAILY_RESET_THREAD = None
 _DAILY_RESET_STOP = threading.Event()
+BROWSER_PROCESS_MARKERS = (
+    "chrome-headless-shell",
+    "/ms-playwright/",
+    "playwright_chromiumdev_profile",
+)
 
 ALLOWED_STATES = [
     "Georgia Morning","Georgia Evening","Georgia Night",
@@ -185,6 +190,12 @@ def process_is_alive(pid: int) -> bool:
     if pid == os.getpid():
         return True
     try:
+        stat = (Path("/proc") / str(pid) / "stat").read_text(encoding="utf-8", errors="ignore")
+        if ") Z " in stat:
+            return False
+    except Exception:
+        pass
+    try:
         os.kill(pid, 0)
         return True
     except OSError:
@@ -224,6 +235,14 @@ def terminate_process(pid: int, timeout: float = 10.0):
 
     deadline = time.time() + timeout
     while time.time() < deadline:
+        try:
+            waited_pid, _ = os.waitpid(pid, os.WNOHANG)
+            if waited_pid == pid:
+                return
+        except ChildProcessError:
+            pass
+        except Exception:
+            pass
         if not process_is_alive(pid):
             return
         time.sleep(0.2)
@@ -232,6 +251,46 @@ def terminate_process(pid: int, timeout: float = 10.0):
         os.kill(pid, getattr(signal, "SIGKILL", signal.SIGTERM))
     except OSError:
         pass
+
+def read_proc_text(path: Path) -> str:
+    try:
+        return path.read_bytes().replace(b"\x00", b" ").decode("utf-8", "ignore")
+    except Exception:
+        return ""
+
+def is_browser_process(pid: int) -> bool:
+    if pid <= 0 or pid == os.getpid():
+        return False
+
+    proc_dir = Path("/proc") / str(pid)
+    text = f"{read_proc_text(proc_dir / 'comm')} {read_proc_text(proc_dir / 'cmdline')}".lower()
+    if not text.strip():
+        return False
+
+    if any(marker in text for marker in BROWSER_PROCESS_MARKERS):
+        return True
+
+    browser_name = "chromium" in text or re.search(r"\bchrome\b", text) is not None
+    return browser_name and ("--remote-debugging-pipe" in text or "--headless" in text)
+
+def cleanup_browser_processes():
+    if os.name != "posix":
+        return
+
+    proc_root = Path("/proc")
+    if not proc_root.exists():
+        return
+
+    victims = []
+    for child in proc_root.iterdir():
+        if not child.name.isdigit():
+            continue
+        pid = int(child.name)
+        if is_browser_process(pid):
+            victims.append(pid)
+
+    for pid in victims:
+        terminate_process(pid, timeout=1.5)
 
 def close_scheduler_log_handle():
     global _SCHEDULER_LOG_HANDLE
@@ -543,6 +602,9 @@ def stop_scheduler():
 def daily_reset_enabled() -> bool:
     return env_flag("DAILY_RESET_ENABLED", default=True)
 
+def daily_reset_restarts_process() -> bool:
+    return env_flag("DAILY_RESET_RESTART_PROCESS", default=True)
+
 def read_daily_reset_marker() -> str:
     try:
         return DAILY_RESET_MARKER.read_text(encoding="utf-8").strip()
@@ -573,12 +635,26 @@ def remove_runtime_artifacts():
         except Exception:
             pass
 
-def reset_runtime_for_new_day(reason: str = "daily midnight reset"):
+def restart_current_process(reason: str):
+    append_scheduler_log(f"{reason}; re-executing app process")
+    try:
+        sys.stdout.flush()
+    except Exception:
+        pass
+    try:
+        sys.stderr.flush()
+    except Exception:
+        pass
+    close_scheduler_log_handle()
+    os.execv(sys.executable, [sys.executable] + sys.argv)
+
+def reset_runtime_for_new_day(reason: str = "daily midnight reset", restart_scheduler: bool = True):
     day = now_et().date().isoformat()
     if read_daily_reset_marker() == day:
         return
 
     stop_scheduler()
+    cleanup_browser_processes()
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -600,7 +676,7 @@ def reset_runtime_for_new_day(reason: str = "daily midnight reset"):
     write_daily_reset_marker(day)
     append_scheduler_log(f"{reason} completed; runtime files cleared for {day}")
 
-    if env_flag("RUN_OCR_SCHEDULER", default=False):
+    if restart_scheduler and env_flag("RUN_OCR_SCHEDULER", default=False):
         start_scheduler_if_enabled()
 
 def reset_for_new_day_if_needed():
@@ -627,7 +703,10 @@ def daily_reset_loop():
         if _DAILY_RESET_STOP.is_set():
             break
 
-        reset_runtime_for_new_day("daily midnight reset")
+        should_reexec = daily_reset_restarts_process()
+        reset_runtime_for_new_day("daily midnight reset", restart_scheduler=not should_reexec)
+        if should_reexec:
+            restart_current_process("daily midnight reset")
         _DAILY_RESET_STOP.wait(2)
 
 def start_daily_reset_if_enabled():
@@ -734,6 +813,7 @@ def health():
         "scheduler_exit_code": scheduler_exit_code,
         "scheduler_monitor_alive": _SCHEDULER_MONITOR is not None and _SCHEDULER_MONITOR.is_alive(),
         "daily_reset_enabled": daily_reset_enabled(),
+        "daily_reset_restarts_process": daily_reset_restarts_process(),
         "daily_reset_marker": read_daily_reset_marker(),
         "daily_reset_thread_alive": _DAILY_RESET_THREAD is not None and _DAILY_RESET_THREAD.is_alive(),
     })
