@@ -214,7 +214,13 @@ def pid_file_running() -> bool:
     pid = read_scheduler_pid()
     if pid is None:
         return False
-    return process_is_alive(pid)
+    if not process_is_alive(pid):
+        remove_scheduler_pid_file()
+        return False
+    if not is_scheduler_process(pid):
+        remove_scheduler_pid_file()
+        return False
+    return True
 
 def remove_scheduler_pid_file():
     try:
@@ -257,6 +263,14 @@ def read_proc_text(path: Path) -> str:
         return path.read_bytes().replace(b"\x00", b" ").decode("utf-8", "ignore")
     except Exception:
         return ""
+
+def is_scheduler_process(pid: int) -> bool:
+    if pid <= 0 or pid == os.getpid():
+        return False
+    if os.name != "posix":
+        return True
+    text = read_proc_text(Path("/proc") / str(pid) / "cmdline").lower()
+    return "scheduler.py" in text
 
 def is_browser_process(pid: int) -> bool:
     if pid <= 0 or pid == os.getpid():
@@ -588,7 +602,7 @@ def stop_scheduler():
                 pass
 
     _SCHEDULER_PROC = None
-    if pid is not None:
+    if pid is not None and is_scheduler_process(pid):
         terminate_process(pid)
     remove_scheduler_pid_file()
     close_scheduler_log_handle()
