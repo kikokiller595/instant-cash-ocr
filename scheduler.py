@@ -16,6 +16,10 @@ SLEEP = 0.5
 GRACE_SECONDS = 3
 BASE = Path(__file__).resolve().parent
 PICKS = ("pick2", "pick3", "pick4", "pick5")
+# The site sometimes publishes a draw well after HH:11 (the first draw of the day is often late),
+# so keep retrying for up to RETRY_WINDOW after the slot, but never into the next slot.
+RETRY_DELAYS = (0, 45, 90, 120, 180, 240, 300)
+RETRY_WINDOW = timedelta(minutes=20)
 
 
 def resolve_data_dir() -> Path:
@@ -216,22 +220,28 @@ def run_ocr_once(expected_iso: str):
 
 def try_with_retries(run_at: datetime):
     expected_iso = draw_dt_for_run_slot(run_at).isoformat()
-    delays = [0, 45, 90]
+    deadline = run_at + RETRY_WINDOW
+    total = len(RETRY_DELAYS)
 
     last_note = ""
     last_exit = None
+    attempts = 0
 
     log(
         f"Scheduled slot={run_at.strftime('%Y-%m-%d %H:%M:%S %Z')} "
         f"-> expected draw_id={expected_iso}"
     )
 
-    for attempt, delay in enumerate(delays, start=1):
+    for attempt, delay in enumerate(RETRY_DELAYS, start=1):
         if delay > 0:
+            if datetime.now(TZ) + timedelta(seconds=delay) > deadline:
+                log(f"Retry window ({int(RETRY_WINDOW.total_seconds() // 60)} min) exhausted before attempt {attempt}")
+                break
             log(f"Retry policy: sleeping {delay}s before attempt {attempt}")
             time.sleep(delay)
 
-        log(f"Attempt {attempt}/3 for draw_id={expected_iso}")
+        attempts = attempt
+        log(f"Attempt {attempt}/{total} for draw_id={expected_iso}")
         ok, note, exitcode = run_ocr_once(expected_iso)
         last_note, last_exit = note, exitcode
 
@@ -242,7 +252,7 @@ def try_with_retries(run_at: datetime):
         log(f"Attempt {attempt} FAILED - {note} - exit={exitcode}")
 
     log(
-        f"FAIL draw_id={expected_iso} after 3 attempts "
+        f"FAIL draw_id={expected_iso} after {attempts} attempts "
         f"- last_note='{last_note}' - last_exit={last_exit}"
     )
 

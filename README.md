@@ -58,3 +58,5 @@ Si prefieres ver tambien el menu manual, usa `/`.
 - La app sirve los archivos estaticos desde `site/`.
 - Los datos de runtime se guardan en `DATA_DIR` si existe; si no, se usan los archivos dentro de `site/`.
 - `latest.json` acepta tanto formato arreglo como objeto para mantener compatibilidad con datos viejos.
+- El bot lee los resultados directamente del WebSocket de instantcash.bet (`/draw/findAllDrawsByDate`) y guarda esas entradas con `source: "site"`. El OCR de la captura queda solo como respaldo si esa consulta falla.
+- Si un sorteo todavia no esta publicado en el sitio, el scheduler reintenta hasta 20 minutos y cada corrida rellena los sorteos del dia que hayan quedado sin guardar.
